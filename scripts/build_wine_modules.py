@@ -12,8 +12,10 @@ import tarfile
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_URL = "https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.1.0.tar.gz"
 SOURCE_SHA256 = "e4ec87d5821a009dd1f1d2e36ffe2e24b8fcbae9516375ea42f95a16928ab8fa"
-PATCHES = ("crossover-26.1-kernel.patch", "crossover-26.1-mf-software.patch")
-MODULES = {"ntoskrnl.exe": "ntoskrnl.exe", "mfreadwrite.dll": "mfreadwrite", "mfplat.dll": "mfplat"}
+PATCHES = ("crossover-26.1-kernel.patch", "crossover-26.1-mf-software.patch",
+           "crossover-26.1-chromium-flags.patch")
+MODULES = {"ntoskrnl.exe": "ntoskrnl.exe", "mfreadwrite.dll": "mfreadwrite",
+           "mfplat.dll": "mfplat", "ntdll.dll": "ntdll"}
 
 
 def main():

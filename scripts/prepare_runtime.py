@@ -41,7 +41,8 @@ def prepare(crossover, target, modules=None):
         replacements = {name: modules / "dlls" / directory / "x86_64-windows" / name
                         for name, directory in (("ntoskrnl.exe", "ntoskrnl.exe"),
                                                 ("mfreadwrite.dll", "mfreadwrite"),
-                                                ("mfplat.dll", "mfplat"))}
+                                                ("mfplat.dll", "mfplat"),
+                                                ("ntdll.dll", "ntdll"))}
         for module in replacements.values():
             if not module.is_file(): raise ValueError(f"built module missing: {module}")
         windows = wine / "x86_64-windows"

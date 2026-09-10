@@ -2,7 +2,7 @@
 
 **Run the Windows PC version of GODDESS OF VICTORY: NIKKE on an Apple Silicon Mac through CrossOver.**
 
-[简体中文](README.md) · [Validation](docs/VALIDATION.md) · [Architecture](docs/ARCHITECTURE.md)
+[简体中文](README.md) · [Validation](docs/VALIDATION.md) · [Architecture](docs/ARCHITECTURE.md) · [CEF render patch](docs/CHROMIUM-FLAGS.md)
 
 This experimental patch set addresses startup compatibility problems, missing Wine APIs, and black background videos observed while running NIKKE. It also installs a persistent launcher entry inside CrossOver.
 

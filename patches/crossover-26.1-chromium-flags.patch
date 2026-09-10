@@ -1,0 +1,70 @@
+--- a/dlls/ntdll/loader.c
++++ b/dlls/ntdll/loader.c
+@@ -5070,7 +5070,59 @@
+  *
+  * Attach to all the loaded dlls.
+  * If this is the first time, perform the full process initialization.
++ */
++/* Append renderer switches to the command line of the Chromium/CEF hosts.
++ *
++ * winemac.drv can only build a window surface in the process that owns the
++ * window: macdrv_CreateWindowSurface() returns without creating a surface when
++ * get_win_data() finds no per-process window data, so drawing and presenting
++ * into a window owned by another process is silently discarded.  Chromium
++ * renders in a separate GPU process and presents into the browser process's
++ * window, which therefore stays black while every API reports success.
++ * Keeping the GPU work inside the process that owns the window avoids the
++ * cross-process presentation entirely.
++ *
++ * The image list is deliberately explicit: the game and its launcher must keep
++ * their original command lines (the Sail login handshake depends on them).
+  */
++static void append_chromium_workaround_flags(void)
++{
++    static const WCHAR *const images[] = { L"tbs_browser.exe", L"INTLWebViewHelper.exe" };
++    static const WCHAR extra[] = L" --in-process-gpu --disable-gpu-compositing";
++    static const WCHAR marker[] = L"--in-process-gpu";
++    RTL_USER_PROCESS_PARAMETERS *params = NtCurrentTeb()->Peb->ProcessParameters;
++    UNICODE_STRING *cmdline;
++    const WCHAR *name, *base, *p, *q, *r;
++    SIZE_T extra_len = sizeof(extra) - sizeof(WCHAR);
++    WCHAR *buffer;
++    unsigned int i;
++
++    if (!params) return;
++    if (!(name = params->ImagePathName.Buffer)) return;
++    cmdline = &params->CommandLine;
++    if (!cmdline->Buffer) return;
++
++    for (base = p = name; *p; p++) if (*p == L'\\' || *p == L'/') base = p + 1;
++    for (i = 0; i < ARRAY_SIZE(images); i++) if (!wcsicmp( base, images[i] )) break;
++    if (i == ARRAY_SIZE(images)) return;
++
++    /* never add the switches twice */
++    for (p = cmdline->Buffer; *p; p++)
++    {
++        for (q = marker, r = p; *q && *q == *r; q++, r++);
++        if (!*q) return;
++    }
++
++    if (!(buffer = RtlAllocateHeap( GetProcessHeap(), 0,
++                                    cmdline->Length + extra_len + sizeof(WCHAR) ))) return;
++    memcpy( buffer, cmdline->Buffer, cmdline->Length );
++    memcpy( (char *)buffer + cmdline->Length, extra, extra_len + sizeof(WCHAR) );
++    cmdline->Buffer = buffer;
++    cmdline->Length += extra_len;
++    cmdline->MaximumLength = cmdline->Length + sizeof(WCHAR);
++    TRACE( "chromium workaround flags applied to %s\n", debugstr_w(cmdline->Buffer) );
++}
++
+ void loader_init( CONTEXT *context, void **entry )
+ {
+     static int attach_done;
+@@ -5122,6 +5174,7 @@
+             InitializeListHead( &hash_table[i] );
+ 
+         init_user_process_params();
++        append_chromium_workaround_flags();
+         load_global_options();
+         version_init();
+         open_known_dll_ntdir();

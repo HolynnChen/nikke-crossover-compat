@@ -2,7 +2,7 @@
 
 **让《胜利女神：NIKKE》Windows PC 版在 Apple Silicon Mac 上通过 CrossOver 运行。**
 
-[English](README.en.md) · [验证记录](docs/VALIDATION.md) · [技术设计](docs/ARCHITECTURE.md)
+[English](README.en.md) · [验证记录](docs/VALIDATION.md) · [技术设计](docs/ARCHITECTURE.md) · [CEF 渲染补丁](docs/CHROMIUM-FLAGS.md)
 
 这是面向 NIKKE 的实验性兼容补丁。它针对本次测试中遇到的启动异常、部分 Wine 接口缺失和背景视频黑屏问题，并提供固定在 CrossOver 中的启动入口。
 
