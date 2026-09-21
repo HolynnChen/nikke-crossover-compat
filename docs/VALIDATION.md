@@ -1,4 +1,56 @@
-# Validation — 2026-09-08
+# Validation — 2026-09-22
+
+## Current result and provenance
+
+Target: NIKKE.PC_Official_GL_152.8.11 (Global), Apple M4 Max,
+macOS 27.0, CrossOver 26.1, DXVK. The update testing included user-reported
+combat and a tower run. After reverting a later callback experiment, the user
+confirmed responsive lobby navigation again; the game log independently
+recorded lobby → tower entrance → lobby transitions.
+
+The published kernel source and export specification exactly match the
+playable baseline saved before diagnostic instrumentation was added.
+Temporary KeBugCheck memory snapshots and ZwOpenProcess tracing are excluded;
+the original fatal behavior is preserved. The later cross-process callback,
+System-process ownership and workqueue experiments are not part of this release.
+The running gameplay setup was not replaced during publication checks.
+
+Two background CORE driver processes still call KeBugCheck(0x65636154), which
+terminates those processes under Wine. This is an unresolved compatibility
+failure, not merely a cosmetic warning. The game remained interactive in the
+reported session; these observations do not prove full protection-component
+health, official support or long-term stability.
+
+## Clean source checks
+
+The pinned CrossOver 26.1 archive was extracted into a new directory. All four
+patches applied, and ntoskrnl.exe, mfplat.dll, mfreadwrite.dll and the minimal
+Wine lsass.exe component compiled successfully with the public build script.
+
+- Native decoder: 33,554,432 candidates, only 16 accepted NOP encodings.
+- Native A/B, eight-thread execution and invalid-instruction/handler controls: pass.
+- Wine mutex, process-name lifetime, crash-callback registration, memory-range,
+  logical mapping and privileged-fault classification regressions: pass.
+- Thread owner: correct self/child ownership and stable borrowed pointer.
+- Process exit status: running 0x103; actual requested exit status 0x12345.
+- User-thread context: actual register values match GetThreadContext;
+  unsupported kernel context returns failure.
+- MDL mapping: shared contents, interior addresses, multiple references,
+  idempotent mapping and deferred final release pass.
+- Windows A/B, imported-DLL initialization and actual child-process inheritance: pass.
+- Wine reads the new RunServices value and starts lsass.exe in the disposable prefix.
+- Offline installer configuration: unrelated registry entries survive;
+  repeated setup leaves one startup entry; external symlink targets stay unchanged.
+
+These API tests use authored fixtures in a disposable prefix, not game/ACE
+files. They do not exercise a complete anti-cheat handshake. The new clean
+build and installer have not been run end to end through gameplay; manual
+playability evidence comes from the preceding local diagnostic runtime.
+The earlier ten-minute result below belongs to the previous client version.
+
+---
+
+# Historical validation — 2026-09-08
 
 ## Result
 

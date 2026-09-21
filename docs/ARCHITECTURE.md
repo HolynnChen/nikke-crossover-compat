@@ -54,7 +54,7 @@ illegal-instruction classification.
 ## Wine module overlay
 
 The pinned-source builder applies reviewable patches and builds three PE
-modules. `prepare_runtime.py --modules` copies those modules into a new local
+modules plus a minimal Wine system-process executable. `prepare_runtime.py --modules` copies those modules into a new local
 runtime view while linking unchanged components to the existing installation.
 No driver or game image is rewritten.
 
@@ -68,3 +68,24 @@ Media experiments are opt-in capability fallbacks. They neither produce
 fake shared handles nor claim to implement cross-device resource sharing.
 Successful software decoding in the independent probe requires an application
 that supports CPU frames; Unity's response must be verified separately.
+
+## September update
+
+Patch order is kernel, thread-owner, September update, then media fallback.
+The historical `thread-process-experimental` filename remains for provenance;
+its implementation is now part of the default build. DW-Proton contributions
+and local changes are itemized in THIRD_PARTY.md.
+
+The memory mapping layer retains a mapped section view while an MDL references
+it and delays unmapping until the last retained mapping is released. It remains
+a Wine user-space model, not host physical-memory access. Process exit status
+and user-thread context come from actual queried objects. Unsupported requests
+remain failures.
+
+The driver-entry compatibility shim places the entry return address in the
+upper canonical range and converts matching address faults back into Wine's
+user-space address model. This broad upstream exception translation is not a
+complete guest kernel or interrupt backend. The `lsass.exe` Wine component
+registers as a system process and waits for shutdown; it provides no Windows
+security-service implementation. Installation copies it and adds a RunServices
+entry only in a stopped, cloned bottle.
