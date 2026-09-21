@@ -31,6 +31,30 @@ def copy_tree(source, target):
     subprocess.run(['/bin/cp', '-cR', str(source), str(target)], check=True)
 
 
+def install_system_process(prefix, runtime):
+    """Configure only the stopped clone, preserving other startup entries."""
+    component = runtime / 'lib/wine/x86_64-windows/lsass.exe'
+    destination = prefix / 'drive_c/windows/system32/lsass.exe'
+    # Never copy through a bottle symlink into the installed CrossOver app.
+    if destination.is_symlink(): destination.unlink()
+    shutil.copy2(component, destination)
+    path = prefix / 'system.reg'
+    content = path.read_text()
+    section = r'[Software\\Microsoft\\Windows\\CurrentVersion\\RunServices]'
+    value = r'"WineLsassCompat"="C:\\windows\\system32\\lsass.exe"'
+    lines = content.splitlines()
+    for index, line in enumerate(lines):
+        if not (line == section or line.startswith(section + ' ')): continue
+        end = next((i for i in range(index + 1, len(lines)) if lines[i].startswith('[')), len(lines))
+        entries = [entry for entry in lines[index + 1:end]
+                   if not entry.startswith('"WineLsassCompat"=')]
+        lines[index + 1:end] = entries + [value, '']
+        break
+    else:
+        lines.extend(['', section, value, ''])
+    path.write_text('\n'.join(lines) + '\n')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source-prefix', required=True, type=Path)
@@ -57,6 +81,7 @@ def main():
     cx = args.crossover.resolve()
     for p in (source / 'system.reg', source / 'cxbottle.conf',
               source_runtime / 'lib/wine/x86_64-unix/ntdll.so',
+              source_runtime / 'lib/wine/x86_64-windows/lsass.exe',
               source_app / 'Contents/MacOS/wine_bootstrap', source_bridge, cx / 'bin/cxmenu'):
         if not p.is_file(): parser.error(f'required file missing: {p}')
     if prefix.exists() or support.exists():
@@ -96,6 +121,7 @@ def main():
     copy_tree(source, prefix)
     os.chmod(prefix, 0o700)
     copy_tree(source_runtime, runtime)
+    install_system_process(prefix, runtime)
     copy_tree(source_app, app)
     shutil.copy2(source_bridge, bridge)
     loader = app / 'Contents/MacOS/wine_bootstrap'
@@ -111,8 +137,10 @@ def main():
     new_env = {key: relocate(value) for key, value in source_env.items()}
     new_env.update(CX_BOTTLE=args.bottle_name, CX_BOTTLE_PATH=str(prefix.parent),
                    WINEPREFIX=str(prefix), CX_ROOT=str(cx), WINEARCH='wow64',
+                   WINEDEBUG='-all,err+all,warn+ntoskrnl,fixme+ntoskrnl,warn+mfplat',
                    NOP_BRIDGE_LOG=str(support / 'logs/launcher.log'))
-    source_info.update(CFBundleIdentifier='org.nopbridge.nikke.compatibility',
+    source_info.update(CFBundleIdentifier='org.nopbridge.nikke.compatibility.' +
+                       args.bottle_name.lower().replace('_', '-'),
                        CFBundleName='NIKKE Compatibility', LSEnvironment=new_env)
     (app / 'Contents/Info.plist').write_bytes(plistlib.dumps(source_info))
     subprocess.run(['/usr/bin/codesign', '--force', '--sign', '-', str(app)], check=True)
@@ -137,7 +165,7 @@ def main():
            '--description', 'Launch the locally tested NIKKE compatibility runtime', '--install']
     if icon.is_file(): cmd += ['--icon', str(icon)]
     subprocess.run(cmd, env=menu_env, check=True)
-    modules = ['ntoskrnl.exe', 'mfplat.dll', 'mfreadwrite.dll']
+    modules = ['ntoskrnl.exe', 'mfplat.dll', 'mfreadwrite.dll', 'lsass.exe']
     hashes = {name: digest(runtime / 'lib/wine/x86_64-windows' / name) for name in modules}
     hashes.update(bootstrap=digest(loader), bridge=digest(bridge))
     manifest = dict(bottle=str(prefix), app=str(app), runtime=str(runtime), sha256=hashes,

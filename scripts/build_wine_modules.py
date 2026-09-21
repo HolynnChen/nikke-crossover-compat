@@ -12,8 +12,12 @@ import tarfile
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_URL = "https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.1.0.tar.gz"
 SOURCE_SHA256 = "e4ec87d5821a009dd1f1d2e36ffe2e24b8fcbae9516375ea42f95a16928ab8fa"
-PATCHES = ("crossover-26.1-kernel.patch", "crossover-26.1-mf-software.patch")
-MODULES = {"ntoskrnl.exe": "ntoskrnl.exe", "mfreadwrite.dll": "mfreadwrite", "mfplat.dll": "mfplat"}
+PATCHES = ("crossover-26.1-kernel.patch",
+           "crossover-26.1-thread-process-experimental.patch",
+           "crossover-26.1-september-update.patch",
+           "crossover-26.1-mf-software.patch")
+MODULES = {"ntoskrnl.exe": "dlls/ntoskrnl.exe", "mfreadwrite.dll": "dlls/mfreadwrite",
+           "mfplat.dll": "dlls/mfplat", "lsass.exe": "programs/lsass"}
 
 
 def main():
@@ -22,7 +26,7 @@ def main():
     parser.add_argument("--output", type=Path, default=ROOT / "local/wine-modules")
     parser.add_argument("--bison", default="/opt/homebrew/opt/bison/bin/bison")
     parser.add_argument("--with-thread-process", action="store_true",
-                        help="include the separately tested PsGetThreadProcess candidate (not gameplay verified)")
+                        help="deprecated: PsGetThreadProcess is now included by default")
     args = parser.parse_args()
     archive = args.archive.resolve()
     digest = hashlib.sha256()
@@ -49,11 +53,26 @@ def main():
                     shutil.copyfileobj(src, dest)
                 path.chmod(item.mode & 0o777)
             else: raise ValueError(f"unexpected archive member type: {item.name}")
-    patches = PATCHES + (("crossover-26.1-thread-process-experimental.patch",)
-                         if args.with_thread_process else ())
-    for patch in patches:
+    for patch in PATCHES:
         subprocess.run(["patch", "-p1", "--batch", "--forward", "-i", str(ROOT / "patches" / patch)],
                        cwd=source, check=True)
+    # Build the upstream Wine system-process component against the same headers
+    # and ntdll import library as the kernel modules; no host service is installed.
+    lsass = source / "programs/lsass"
+    lsass.mkdir()
+    shutil.copy2(ROOT / "src/lsass.c", lsass / "lsass.c")
+    (lsass / "Makefile.in").write_text(
+        "MODULE = lsass.exe\nIMPORTS = ntdll\nEXTRADLLFLAGS = -mconsole\nSOURCES = lsass.c\n")
+    for name, anchor, addition in (
+        ("configure", "wine_fn_config_makefile programs/services enable_services",
+         "wine_fn_config_makefile programs/lsass enable_lsass"),
+        ("configure.ac", "WINE_CONFIG_MAKEFILE(programs/services)",
+         "WINE_CONFIG_MAKEFILE(programs/lsass)"),
+    ):
+        path = source / name
+        content = path.read_text()
+        if content.count(anchor) != 1: raise ValueError(f"unexpected {name} layout")
+        path.write_text(content.replace(anchor, addition + "\n" + anchor))
     build = target / "build"
     build.mkdir()
     env = os.environ.copy()
@@ -64,12 +83,12 @@ def main():
         subprocess.run([str(source / "configure"), "--enable-archs=x86_64",
                         "--without-x", "--without-freetype", "--disable-tests"],
                        cwd=build, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
-    targets = [f"dlls/{directory}/x86_64-windows/{name}" for name, directory in MODULES.items()]
+    targets = [f"{directory}/x86_64-windows/{name}" for name, directory in MODULES.items()]
     with (target / "build.log").open("w") as log:
         subprocess.run(["make", "-j8", *targets], cwd=build, env=env,
                        stdout=log, stderr=subprocess.STDOUT, check=True)
     for name, directory in MODULES.items():
-        result = build / "dlls" / directory / "x86_64-windows" / name
+        result = build / directory / "x86_64-windows" / name
         print(f"{name}: {hashlib.sha256(result.read_bytes()).hexdigest()}")
     print(f"Build complete: {build}. No runtime or bottle was modified.")
 

@@ -15,10 +15,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prefix", required=True, type=Path)
     parser.add_argument("--runtime", type=Path, default=ROOT / "local/runtime")
-    parser.add_argument("--with-thread-process", action="store_true")
+    parser.add_argument("--with-thread-process", action="store_true",
+                        help="deprecated: this test is now always included")
     args = parser.parse_args()
     names = ("guarded_mutex", "process_image_name", "bugcheck_registration",
-             "physical_ranges", "physical_mapping", "thread_process", "privileged_probe")
+             "physical_ranges", "physical_mapping", "thread_process", "privileged_probe",
+             "process_exit_status", "thread_context_test", "mdl_mapping_test")
     subprocess.run(["make", *(f"build/{name}.exe" for name in names)], cwd=ROOT, check=True)
     child = ROOT / "build/image_name_child_abcdef.exe"
     shutil.copyfile(ROOT / "build/process_image_name.exe", child)
@@ -30,7 +32,8 @@ def main():
              ("physical_mapping", [], False),
              ("privileged_probe", [], False),
              ("privileged_probe", ["fixed"], True)]
-    if args.with_thread_process: cases.append(("thread_process", [], False))
+    cases.extend((name, [], False) for name in
+                 ("thread_process", "process_exit_status", "thread_context_test", "mdl_mapping_test"))
     for name, extra, privileged in cases:
         env = os.environ.copy()
         env.pop("NOP_BRIDGE_LOG", None)
