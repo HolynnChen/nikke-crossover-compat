@@ -48,5 +48,11 @@ build/physical_mapping.exe: tests/physical_mapping.c | build
 	$(WINCC) $(CFLAGS) -static $< -o $@
 build/thread_process.exe: tests/thread_process.c | build
 	$(WINCC) $(CFLAGS) -static $< -o $@
+build/process_exit_status.exe: tests/process_exit_status.c | build
+	$(WINCC) $(CFLAGS) -static $< -o $@
+build/thread_context_test.exe: tests/thread_context_test.c | build
+	$(WINCC) $(CFLAGS) -static $< -o $@
+build/mdl_mapping_test.exe: tests/mdl_mapping_test.c | build
+	$(WINCC) $(CFLAGS) -static $< -o $@
 clean:
 	rm -rf build

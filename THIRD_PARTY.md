@@ -51,3 +51,27 @@ The prior launcher work referenced `Dorin130/li-miniloader-wine-fix` and a CEF
 software-rendering wrapper. They are not bundled or installed by this project.
 NIKKE assets, ACE files, Intel manuals and Microsoft documentation are not
 redistributed. Product names identify test environments, not affiliation.
+
+## September 2026 update
+
+`patches/crossover-26.1-september-update.patch` adapts LGPL-2.1-or-later
+work from [DW-Proton's Wine tree](https://dawn.wine/dawn-winery/wine-dwproton):
+
+- Driver entry return-address compatibility: mkrsym1,
+  [e332f9a4a3a8afbe4423bf77b260f3db08656af7](https://dawn.wine/dawn-winery/wine-dwproton/commit/e332f9a4a3a8afbe4423bf77b260f3db08656af7).
+- Driver ServiceKeyName: shxrrydw,
+  [57817da4e9e946a134561ef3aa0df9ab1c27dc54](https://dawn.wine/dawn-winery/wine-dwproton/commit/57817da4e9e946a134561ef3aa0df9ab1c27dc54).
+- MmCopyMemory export and explicit unsupported result: shxrrydw,
+  [e32f76019c5b577fa225f6c91a5616200c844454](https://dawn.wine/dawn-winery/wine-dwproton/commit/e32f76019c5b577fa225f6c91a5616200c844454).
+- MDL mapping lifetime: shxrrydw,
+  [429496a0ddbc2a4301ff3cc4387a9f2d7ad16b99](https://dawn.wine/dawn-winery/wine-dwproton/commit/429496a0ddbc2a4301ff3cc4387a9f2d7ad16b99),
+  with local allocation-base matching, multiple-reference release and authored tests.
+- PsGetContextThread entry thunk: shxrrydw,
+  [363bac18bb83ee63d709359b3b2d0612e36ff1b4](https://dawn.wine/dawn-winery/wine-dwproton/commit/363bac18bb83ee63d709359b3b2d0612e36ff1b4).
+- Minimal Wine system-process component `src/lsass.c`: Copyright 2026 bluechxin,
+  [a55ca5689fbce9c6fe99d8d63a1de99aff4bb8dc](https://dawn.wine/dawn-winery/wine-dwproton/commit/a55ca5689fbce9c6fe99d8d63a1de99aff4bb8dc).
+  Its license header is retained. It is not an implementation of Windows LSASS security services.
+
+The local PsGetProcessExitStatus implementation queries the actual process;
+it does not adopt the upstream fixed STATUS_PENDING placeholder. The existing
+thread-owner patch retains its historical filename but is now included by default.
