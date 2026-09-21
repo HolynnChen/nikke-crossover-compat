@@ -5,6 +5,6 @@
 <key>CFBundleExecutable</key><string>wine_bootstrap</string>
 <key>CFBundleName</key><string>NOP Bridge Lab</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleVersion</key><string>0.1.0</string>
+<key>CFBundleVersion</key><string>0.2.0</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
