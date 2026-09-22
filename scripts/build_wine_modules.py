@@ -15,6 +15,7 @@ SOURCE_SHA256 = "e4ec87d5821a009dd1f1d2e36ffe2e24b8fcbae9516375ea42f95a16928ab8f
 PATCHES = ("crossover-26.1-kernel.patch",
            "crossover-26.1-thread-process-experimental.patch",
            "crossover-26.1-september-update.patch",
+           "crossover-26.1-ace-kernel-exports.patch",
            "crossover-26.1-mf-software.patch")
 MODULES = {"ntoskrnl.exe": "dlls/ntoskrnl.exe", "mfreadwrite.dll": "dlls/mfreadwrite",
            "mfplat.dll": "dlls/mfplat", "lsass.exe": "programs/lsass"}
