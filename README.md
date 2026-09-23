@@ -2,16 +2,19 @@
 
 **让《胜利女神：NIKKE》Windows PC 版在 Apple Silicon Mac 上通过 CrossOver 运行。**
 
-[English](README.en.md) · [验证记录](docs/VALIDATION.md) · [技术设计](docs/ARCHITECTURE.md)
+[English](README.en.md) · [安装指南](docs/INSTALL.zh-CN.md) · [验证记录](docs/VALIDATION.md) · [技术设计](docs/ARCHITECTURE.md)
 
 这是面向 NIKKE 的实验性兼容补丁。它针对本次测试中遇到的启动异常、部分 Wine 接口缺失和背景视频黑屏问题，并提供固定在 CrossOver 中的启动入口。
 
+**2026-09-23 更新：补齐 ACE 反作弊所需的内核导出，新增完整安装指南。** 详见 [本次更新](docs/UPDATE-2026-09-23.zh-CN.md)。
+
 **2026-09-22 更新：适配 NIKKE PC 国际服 152.8.11。** 已在 Apple Silicon + CrossOver 26.1 上实测进入大厅、战斗和爬塔；恢复可玩配置后，用户再次确认大厅页面可正常切换、不卡顿。背景动画正常，帧率体感正常。
 
-本次发布为 **0.2.0 实验性源码更新**，补齐新版客户端使用的驱动入口、内存映射和进程/线程查询兼容处理。详见 [本次更新](docs/UPDATE-2026-09-22.zh-CN.md)。
+本次发布为 **0.3.0 实验性源码更新**，在 0.2.0 基础上补齐 ACE 所需的 7 个内核导出，并新增中英双语安装指南。详见 [本次更新](docs/UPDATE-2026-09-23.zh-CN.md) 与 [0.2.0 更新](docs/UPDATE-2026-09-22.zh-CN.md)。
 
 ## 它解决什么问题？
 
+- **ACE 反作弊启动失败：**补齐 ACE 调用但 CrossOver 未实现的 7 个 `ntoskrnl.exe` 内核导出（`KeTryToAcquireGuardedMutex`、`KeIpiGenericCall`、`PsGetCurrentThreadTeb` 等）。缺失会使游戏直接拒绝启动。
 - **启动兼容性：**处理本机 Rosetta 无法正确执行的少量 NOP 指令形式，修正特权指令异常分类，并补充游戏启动过程中调用的部分 Wine 内核接口。
 - **背景动画黑屏：**让视频播放尽早使用应用支持的软件回退路径。
 - **后续启动：**把配置和运行时保存在持久目录，直接从 CrossOver 的程序列表打开官方 NIKKE 启动器。
@@ -32,6 +35,8 @@
 本仓库只提供源码，不包含游戏、ACE 文件、CrossOver 二进制或账号数据。测试环境此前已使用 [li-miniloader-wine-fix](https://github.com/Dorin130/li-miniloader-wine-fix) 以及 CEF 启动器修复；这些依赖不由本项目安装。若官方启动器本身打不开，应先解决启动器问题。
 
 ## 安装
+
+**完整步骤见 [安装指南](docs/INSTALL.zh-CN.md)。** 下面是概要。
 
 以下命令在本仓库根目录执行。先完全退出源容器里的游戏、启动器和后台进程。
 
@@ -104,6 +109,7 @@ python3 scripts/install_crossover_entry.py \
 ## 已知限制
 
 - 当前配置已实测可玩，但两个后台 ACE CORE 驱动进程仍有异常退出记录；这不代表所有保护组件或检查均正常，也不是官方支持声明。
+- **不要用 CrossOver 原版 `ntoskrnl.exe` 覆盖本项目构建的版本；本项目的版本是原版的超集，覆盖回去会导致 ACE 报 `unimplemented function` 并拒绝启动。**
 - 发布源码已去除临时诊断和内存快照代码。干净构建的接口测试与用户实玩验证分别记录；新安装流程尚未完成从安装到战斗的整体验证，见 [验证记录](docs/VALIDATION.md)。
 - 未做长期稳定性、定量 FPS 或所有过场测试。CrossOver 或游戏更新后可能需要重新适配。
 

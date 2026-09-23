@@ -2,16 +2,19 @@
 
 **Run the Windows PC version of GODDESS OF VICTORY: NIKKE on an Apple Silicon Mac through CrossOver.**
 
-[简体中文](README.md) · [Validation](docs/VALIDATION.md) · [Architecture](docs/ARCHITECTURE.md)
+[简体中文](README.md) · [Installation Guide](docs/INSTALL.en.md) · [Validation](docs/VALIDATION.md) · [Architecture](docs/ARCHITECTURE.md)
 
 This experimental patch set addresses startup compatibility problems, missing Wine APIs, and black background videos observed while running NIKKE. It also installs a persistent launcher entry inside CrossOver.
 
+**2026-09-23 update: ACE kernel exports completed, full installation guide added.** See the [update notes](docs/UPDATE-2026-09-23.en.md).
+
 **2026-09-22 update: compatibility work for NIKKE PC Global 152.8.11.** On Apple Silicon with CrossOver 26.1, the user confirmed lobby access, combat and a tower run. After restoring the playable configuration, the user again confirmed responsive lobby navigation. Background animation worked and frame rate felt normal.
 
-This is the **0.2.0 experimental source update**, adding driver-entry, memory-mapping and process/thread-query compatibility needed by the updated client. See the [update notes](docs/UPDATE-2026-09-22.en.md).
+This is the **0.3.0 experimental source update**, adding the 7 kernel exports ACE needs on top of 0.2.0, plus bilingual installation guides.
 
 ## What does it address?
 
+- **ACE anti-cheat startup failure:** implement 7 `ntoskrnl.exe` kernel exports that ACE calls but CrossOver does not provide (`KeTryToAcquireGuardedMutex`, `KeIpiGenericCall`, `PsGetCurrentThreadTeb`, and others). Without them the game refuses to start.
 - **Startup compatibility:** handle specific register-NOP forms rejected by Rosetta on the tested machine, correct privileged-instruction exception classification, and supply several Wine kernel APIs used during startup.
 - **Black background video:** expose an unsupported DXGI-video capability early enough for the application to take its software fallback.
 - **Repeatable launching:** keep the runtime in a persistent location and open the official NIKKE launcher from CrossOver's application list.
@@ -32,6 +35,8 @@ You need:
 This repository contains source code only. It does not include game assets, ACE files, CrossOver binaries, or account data. The tested bottle already used [li-miniloader-wine-fix](https://github.com/Dorin130/li-miniloader-wine-fix) and a CEF launcher fix. This project does not install those dependencies. Fix the official launcher first if it cannot open.
 
 ## Installation
+
+**Full steps are in the [Installation Guide](docs/INSTALL.en.md).** Summary below.
 
 Run these commands from the repository root. Completely close the source bottle's game, launcher, and background processes before copying it.
 
@@ -104,6 +109,7 @@ The dedicated launch profile uses the tested **DXVK** backend. Selecting another
 ## Known limitations
 
 - The current configuration is playable in the reported sessions, but two background ACE CORE driver processes still exit abnormally. Playability does not establish that all protection components/checks are healthy or that this configuration is officially supported.
+- **Never overwrite this project's `ntoskrnl.exe` with CrossOver's stock build — ours is a superset, and reverting makes ACE report `unimplemented function` and refuse to start.**
 - Temporary diagnostics and memory-snapshot code are excluded. Clean-build API tests and user gameplay reports are recorded separately. The new installation flow has not been verified end to end through combat; see [Validation](docs/VALIDATION.md).
 - Long sessions, quantitative FPS and every cutscene have not been tested. CrossOver or game updates may need further adaptation.
 
