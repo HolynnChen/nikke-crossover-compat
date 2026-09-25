@@ -1,0 +1,413 @@
+--- a/dlls/ntoskrnl.exe/instr.c
++++ b/dlls/ntoskrnl.exe/instr.c
+@@ -923,6 +923,15 @@
+     EXCEPTION_RECORD *record = ptrs->ExceptionRecord;
+     CONTEXT *context = ptrs->ContextRecord;
+ 
++    /* kernelmode rip */
++    if (record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && (context->Rip & 0x0000800000000000))
++    {
++        TRACE( "converting kernelmode rip=%Ix\n", context->Rip );
++        context->Rip &= 0x00007FFFFFFFFFFF;
++        TRACE( "resuming on rip=%Ix\n", context->Rip );
++        return EXCEPTION_CONTINUE_EXECUTION;
++    }
++
+     if (record->ExceptionCode == EXCEPTION_PRIV_INSTRUCTION ||
+         (record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
+          record->ExceptionInformation[0] == EXCEPTION_READ_FAULT))
+--- a/dlls/ntoskrnl.exe/ntoskrnl.c
++++ b/dlls/ntoskrnl.exe/ntoskrnl.c
+@@ -1204,6 +1204,95 @@
+ }
+ 
+ 
++/* Based on DW-Proton 429496a0ddbc (shxrrydw, LGPL-2.1-or-later).
++ * Retain a section view until every MDL mapping that pins it is released. */
++struct mapped_view
++{
++    struct list entry;
++    MDL *mdl;
++    void *allocation_base;
++    void *pending_unmap;
++};
++
++static struct list mapped_views = LIST_INIT( mapped_views );
++DECLARE_CRITICAL_SECTION(mapped_views_cs);
++static struct mapped_view *find_mapped_view( const void *addr )
++{
++    struct mapped_view *view;
++    MEMORY_BASIC_INFORMATION info;
++    void *base = (void *)addr;
++
++    if (VirtualQuery( addr, &info, sizeof(info) )) base = info.AllocationBase;
++    LIST_FOR_EACH_ENTRY( view, &mapped_views, struct mapped_view, entry )
++        if (base == view->allocation_base)
++            return view;
++    return NULL;
++}
++
++static BOOL add_mapped_view( MDL *mdl )
++{
++    struct mapped_view *view;
++
++    MEMORY_BASIC_INFORMATION info;
++
++    if (!(mdl->MdlFlags & MDL_PAGES_LOCKED) ||
++        !VirtualQuery( mdl->MappedSystemVa, &info, sizeof(info) ) || info.Type != MEM_MAPPED) return TRUE;
++    if (!(view = malloc( sizeof(*view) ))) return FALSE;
++    view->allocation_base = info.AllocationBase;
++    view->mdl = mdl;
++    view->pending_unmap = NULL;
++
++    EnterCriticalSection( &mapped_views_cs );
++    list_add_tail( &mapped_views, &view->entry );
++    LeaveCriticalSection( &mapped_views_cs );
++    return TRUE;
++}
++
++static void remove_mapped_view( MDL *mdl )
++{
++    struct mapped_view *view, *other;
++    void *unmap = NULL;
++
++    EnterCriticalSection( &mapped_views_cs );
++    LIST_FOR_EACH_ENTRY( view, &mapped_views, struct mapped_view, entry )
++    {
++        if (view->mdl != mdl) continue;
++        unmap = view->pending_unmap;
++        list_remove( &view->entry );
++        free( view );
++        /* another MDL may still map the same view */
++        if (unmap && (other = find_mapped_view( unmap )))
++        {
++            other->pending_unmap = unmap;
++            unmap = NULL;
++        }
++        break;
++    }
++    LeaveCriticalSection( &mapped_views_cs );
++
++    if (unmap) NtUnmapViewOfSection( GetCurrentProcess(), unmap );
++}
++
++/***********************************************************************
++ *           ZwUnmapViewOfSection  (NTOSKRNL.EXE.@)
++ */
++NTSTATUS WINAPI ZwUnmapViewOfSection( HANDLE process, void *addr )
++{
++    struct mapped_view *view = NULL;
++
++    TRACE( "process %p, addr %p\n", process, addr );
++
++    if (process == GetCurrentProcess())
++    {
++        EnterCriticalSection( &mapped_views_cs );
++        if ((view = find_mapped_view( addr ))) view->pending_unmap = addr;
++        LeaveCriticalSection( &mapped_views_cs );
++    }
++    if (view) return STATUS_SUCCESS;
++
++    return NtUnmapViewOfSection( process, addr );
++}
++
+ /***********************************************************************
+  *           IoAllocateMdl  (NTOSKRNL.EXE.@)
+  */
+@@ -1247,6 +1336,7 @@
+ void WINAPI IoFreeMdl(PMDL mdl)
+ {
+     TRACE("%p\n", mdl);
++    remove_mapped_view( mdl );
+     HeapFree(GetProcessHeap(), 0, mdl);
+ }
+ 
+@@ -1516,6 +1606,7 @@
+     struct wine_driver *driver = obj;
+     RtlFreeUnicodeString( &driver->driver_obj.DriverName );
+     RtlFreeUnicodeString( &driver->driver_obj.DriverExtension->ServiceKeyName );
++    RtlFreeUnicodeString( &driver->registry_path );
+     free_kernel_object( driver );
+ }
+ 
+@@ -1537,6 +1628,7 @@
+ NTSTATUS WINAPI IoCreateDriver( UNICODE_STRING *name, PDRIVER_INITIALIZE init )
+ {
+     struct wine_driver *driver;
++    const WCHAR *key_name;
+     NTSTATUS status;
+     unsigned int i;
+ 
+@@ -1555,7 +1647,10 @@
+     driver->driver_obj.DriverInit      = init;
+     driver->driver_obj.DriverExtension = &driver->driver_extension;
+     driver->driver_extension.DriverObject   = &driver->driver_obj;
+-    build_driver_keypath( driver->driver_obj.DriverName.Buffer, &driver->driver_extension.ServiceKeyName );
++    build_driver_keypath( driver->driver_obj.DriverName.Buffer, &driver->registry_path );
++    if ((key_name = wcsrchr( driver->registry_path.Buffer, '\\' ))) key_name++;
++    else key_name = driver->registry_path.Buffer;
++    RtlCreateUnicodeString( &driver->driver_extension.ServiceKeyName, key_name );
+     for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
+         driver->driver_obj.MajorFunction[i] = unhandled_irp;
+     list_init( &driver->root_pnp_devices );
+@@ -1565,7 +1660,7 @@
+         ERR( "failed to insert driver %s in tree\n", debugstr_us(name) );
+     LeaveCriticalSection( &drivers_cs );
+ 
+-    status = driver->driver_obj.DriverInit( &driver->driver_obj, &driver->driver_extension.ServiceKeyName );
++    status = driver->driver_obj.DriverInit( &driver->driver_obj, &driver->registry_path );
+     if (status)
+     {
+         IoDeleteDriver( &driver->driver_obj );
+@@ -2527,6 +2622,21 @@
+     return (HANDLE)process->info.UniqueProcessId;
+ }
+ 
++NTSTATUS WINAPI PsGetProcessExitStatus( PEPROCESS process )
++{
++    PROCESS_BASIC_INFORMATION info;
++    HANDLE handle;
++    NTSTATUS status;
++
++    status = ObOpenObjectByPointer( process, OBJ_KERNEL_HANDLE, NULL,
++                                   PROCESS_QUERY_LIMITED_INFORMATION, PsProcessType, KernelMode, &handle );
++    if (status) return status;
++    status = NtQueryInformationProcess( handle, ProcessBasicInformation, &info, sizeof(info), NULL );
++    NtClose( handle );
++    TRACE( "%p status %#lx exit %#lx\n", process, status, status ? status : info.ExitStatus );
++    return status ? status : info.ExitStatus;
++}
++
+ /*********************************************************************
+  *           PsGetProcessImageFileName    (NTOSKRNL.@)
+  */
+@@ -2656,6 +2766,49 @@
+     TRACE( "%p -> %p\n", thread, thread->kthread.id.UniqueProcess );
+     return thread->kthread.id.UniqueProcess;
+ }
++
++/* DW-Proton 363bac18bb83, LGPL-2.1-or-later; native user-thread context query. */
++NTSTATUS WINAPI get_context_thread( PETHREAD thread, CONTEXT *context, KPROCESSOR_MODE mode )
++{
++    NTSTATUS status;
++    HANDLE h;
++
++    TRACE("%p %p %u\n", thread, context, mode);
++
++    if (mode == KernelMode)
++        return STATUS_UNSUCCESSFUL;
++
++    if ((status = ObOpenObjectByPointer(thread, 0, NULL, THREAD_ALL_ACCESS, NULL, KernelMode, &h)))
++    {
++        WARN("Error opening thread object, status %#lx.\n", status);
++        return status;
++    }
++
++    status = NtGetContextThread(h, context);
++    NtClose(h);
++
++    return status;
++}
++
++/*********************************************************************
++ *           PsGetContextThread    (NTOSKRNL.@)
++ */
++#ifdef __x86_64__
++__ASM_GLOBAL_FUNC( PsGetContextThread,
++                   "subq $0x28,%rsp\n\t"
++                   __ASM_SEH(".seh_stackalloc 0x28\n\t")
++                   __ASM_SEH(".seh_endprologue\n\t")
++                   __ASM_CFI(".cfi_adjust_cfa_offset 0x28\n\t")
++                   "call " __ASM_NAME("get_context_thread") "\n\t"
++                   "addq $0x28,%rsp\n\t"
++                   __ASM_CFI(".cfi_adjust_cfa_offset -0x28\n\t")
++                   "ret" )
++#else
++NTSTATUS WINAPI PsGetContextThread( PETHREAD thread, CONTEXT *context, KPROCESSOR_MODE mode )
++{
++    return get_context_thread( thread, context, mode );
++}
++#endif
+ 
+ /***********************************************************************
+  *           KeInsertQueue   (NTOSKRNL.EXE.@)
+@@ -3034,8 +3187,10 @@
+ {
+     TRACE( "%p %u\n", mdl, mode );
+ 
++    if (mdl->MdlFlags & MDL_MAPPED_TO_SYSTEM_VA) return mdl->MappedSystemVa;
++    mdl->MappedSystemVa = (char *)mdl->StartVa + mdl->ByteOffset;
++    if (!add_mapped_view( mdl )) { mdl->MappedSystemVa = NULL; return NULL; }
+     mdl->MdlFlags |= MDL_MAPPED_TO_SYSTEM_VA;
+-    mdl->MappedSystemVa = (char *)mdl->StartVa + mdl->ByteOffset;
+     return mdl->MappedSystemVa;
+ }
+ 
+@@ -3045,9 +3200,9 @@
+ PVOID WINAPI  MmMapLockedPagesSpecifyCache(PMDLX MemoryDescriptorList, KPROCESSOR_MODE AccessMode, MEMORY_CACHING_TYPE CacheType,
+                                            PVOID BaseAddress, ULONG BugCheckOnFailure, MM_PAGE_PRIORITY Priority)
+ {
+-    FIXME("(%p, %u, %u, %p, %lu, %u): stub\n", MemoryDescriptorList, AccessMode, CacheType, BaseAddress, BugCheckOnFailure, Priority);
+-
+-    return NULL;
++    TRACE("(%p, %u, %u, %p, %lu, %u)\n", MemoryDescriptorList, AccessMode, CacheType, BaseAddress, BugCheckOnFailure, Priority);
++    if (BaseAddress) { WARN("Fixed-address MDL mappings are unsupported\n"); return NULL; }
++    return MmMapLockedPages( MemoryDescriptorList, AccessMode );
+ }
+ 
+ /***********************************************************************
+@@ -3055,7 +3210,10 @@
+  */
+ void WINAPI MmUnmapLockedPages( void *base, MDL *mdl )
+ {
+-    FIXME( "(%p %p_\n", base, mdl );
++    TRACE( "%p %p\n", base, mdl );
++    remove_mapped_view( mdl );
++    mdl->MdlFlags &= ~MDL_MAPPED_TO_SYSTEM_VA;
++    mdl->MappedSystemVa = NULL;
+ }
+ 
+ /***********************************************************************
+@@ -3081,7 +3239,8 @@
+  */
+ void WINAPI MmProbeAndLockPages(PMDLX MemoryDescriptorList, KPROCESSOR_MODE AccessMode, LOCK_OPERATION Operation)
+ {
+-    FIXME("(%p, %u, %u): stub\n", MemoryDescriptorList, AccessMode, Operation);
++    TRACE("(%p, %u, %u)\n", MemoryDescriptorList, AccessMode, Operation);
++    MemoryDescriptorList->MdlFlags |= MDL_PAGES_LOCKED;
+ }
+ 
+ 
+@@ -3099,7 +3258,10 @@
+  */
+ void WINAPI  MmUnlockPages(PMDLX MemoryDescriptorList)
+ {
+-    FIXME("(%p): stub\n", MemoryDescriptorList);
++    TRACE("(%p)\n", MemoryDescriptorList);
++    if (MemoryDescriptorList->MdlFlags & MDL_MAPPED_TO_SYSTEM_VA)
++        MmUnmapLockedPages( MemoryDescriptorList->MappedSystemVa, MemoryDescriptorList );
++    MemoryDescriptorList->MdlFlags &= ~MDL_PAGES_LOCKED;
+ }
+ 
+ 
+@@ -4175,6 +4337,15 @@
+     return module;
+ }
+ 
++#if defined(__x86_64__) && !defined(__arm64ec__)
++static NTSTATUS __attribute__((naked)) call_driver_init( struct _DRIVER_OBJECT *driver, PUNICODE_STRING keyname, void *init )
++{
++    asm( "movq $0xFFFF800000000000,%r9\n\t"
++         "orq %r9,(%rsp)\n\t" 
++         "jmpq *%r8\n\t" );
++}
++#endif
++
+ /* call the driver init entry point */
+ static NTSTATUS WINAPI init_driver( DRIVER_OBJECT *driver_object, UNICODE_STRING *keyname )
+ {
+@@ -4203,7 +4374,11 @@
+     TRACE_(relay)( "\1Call driver init %p (obj=%p,str=%s)\n",
+                    driver_object->DriverInit, driver_object, wine_dbgstr_w(keyname->Buffer) );
+ 
++#if defined(__x86_64__) && !defined(__arm64ec__)
++    status = call_driver_init( driver_object, keyname, driver_object->DriverInit );
++#else
+     status = driver_object->DriverInit( driver_object, keyname );
++#endif
+ 
+     TRACE_(relay)( "\1Ret  driver init %p (obj=%p,str=%s) retval=%08lx\n",
+                    driver_object->DriverInit, driver_object, wine_dbgstr_w(keyname->Buffer), status );
+@@ -4465,6 +4640,18 @@
+ }
+ 
+ /*********************************************************************
++ *           MmCopyMemory    (NTOSKRNL.@)
++ */
++NTSTATUS WINAPI MmCopyMemory(void *target, MM_COPY_ADDRESS source, SIZE_T size, ULONG flags, SIZE_T *copied)
++{
++    FIXME("target %p, source %s, size %Iu, flags %#lx, copied %p stub.\n",
++            target, wine_dbgstr_longlong(source.PhysicalAddress.QuadPart), size, flags, copied);
++
++    *copied = 0;
++    return STATUS_NOT_IMPLEMENTED;
++}
++
++/*********************************************************************
+  *           MmCopyVirtualMemory    (NTOSKRNL.@)
+  */
+ NTSTATUS WINAPI MmCopyVirtualMemory(PEPROCESS fromprocess, void *fromaddress, PEPROCESS toprocess,
+--- a/dlls/ntoskrnl.exe/ntoskrnl.exe.spec
++++ b/dlls/ntoskrnl.exe/ntoskrnl.exe.spec
+@@ -715,6 +715,7 @@
+ @ stdcall MmBuildMdlForNonPagedPool(ptr)
+ @ stub MmCanFileBeTruncated
+ @ stub MmCommitSessionMappedView
++@ stdcall MmCopyMemory(ptr int64 long long ptr)
+ @ stdcall MmCopyVirtualMemory(ptr ptr ptr ptr long long ptr)
+ @ stub MmCreateMdl
+ @ stdcall MmCreateSection(ptr long ptr ptr long long long ptr)
+@@ -909,7 +910,7 @@
+ @ stub PsDereferencePrimaryToken
+ @ stub PsDisableImpersonation
+ @ stub PsEstablishWin32Callouts
+-@ stub PsGetContextThread
++@ stdcall PsGetContextThread(ptr ptr long)
+ @ stdcall PsGetCurrentProcess() IoGetCurrentProcess
+ @ stdcall PsGetCurrentProcessId()
+ @ stdcall PsGetCurrentProcessSessionId()
+@@ -924,7 +925,7 @@
+ @ stub PsGetProcessCreateTimeQuadPart
+ @ stub PsGetProcessDebugPort
+ @ stub PsGetProcessExitProcessCalled
+-@ stub PsGetProcessExitStatus
++@ stdcall PsGetProcessExitStatus(ptr)
+ @ stub PsGetProcessExitTime
+ @ stdcall PsGetProcessId(ptr)
+ @ stdcall PsGetProcessImageFileName(ptr)
+@@ -1549,7 +1550,7 @@
+ @ stdcall -private ZwUnloadKey(ptr) NtUnloadKey
+ @ stdcall -private ZwUnlockFile(long ptr ptr ptr ptr) NtUnlockFile
+ @ stdcall -private ZwUnlockVirtualMemory(long ptr ptr long) NtUnlockVirtualMemory
+-@ stdcall ZwUnmapViewOfSection(long ptr) NtUnmapViewOfSection
++@ stdcall ZwUnmapViewOfSection(long ptr)
+ @ stdcall -private ZwWaitForMultipleObjects(long ptr long long ptr) NtWaitForMultipleObjects
+ @ stdcall ZwWaitForSingleObject(long long ptr) NtWaitForSingleObject
+ @ stdcall ZwWriteFile(long long ptr ptr ptr ptr long ptr ptr) NtWriteFile
+--- a/dlls/ntoskrnl.exe/ntoskrnl_private.h
++++ b/dlls/ntoskrnl.exe/ntoskrnl_private.h
+@@ -96,6 +96,7 @@
+ {
+     DRIVER_OBJECT driver_obj;
+     DRIVER_EXTENSION driver_extension;
++    UNICODE_STRING registry_path;
+     SERVICE_STATUS_HANDLE service_handle;
+     struct wine_rb_entry entry;
+     struct list root_pnp_devices;
+--- a/include/ddk/wdm.h
++++ b/include/ddk/wdm.h
+@@ -801,6 +801,16 @@
+ } INTERFACE_TYPE, *PINTERFACE_TYPE;
+ 
+ typedef LARGE_INTEGER PHYSICAL_ADDRESS, *PPHYSICAL_ADDRESS;
++
++#define MM_COPY_MEMORY_PHYSICAL           0x1
++#define MM_COPY_MEMORY_VIRTUAL            0x2
++
++typedef struct _MM_COPY_ADDRESS {
++  union {
++    PVOID            VirtualAddress;
++    PHYSICAL_ADDRESS PhysicalAddress;
++  } DUMMYUNIONNAME;
++} MM_COPY_ADDRESS, *PMM_COPY_ADDRESS;
+ 
+ #define IO_RESOURCE_PREFERRED             0x01
+ #define IO_RESOURCE_DEFAULT               0x02
+@@ -1873,6 +1883,7 @@
+ PVOID     WINAPI MmAllocateNonCachedMemory(SIZE_T) __WINE_ALLOC_SIZE(1) __WINE_DEALLOC(MmFreeNonCachedMemory) __WINE_MALLOC;
+ PMDL      WINAPI MmAllocatePagesForMdl(PHYSICAL_ADDRESS,PHYSICAL_ADDRESS,PHYSICAL_ADDRESS,SIZE_T);
+ void      WINAPI MmBuildMdlForNonPagedPool(MDL*);
++NTSTATUS  WINAPI MmCopyMemory(void*,MM_COPY_ADDRESS,SIZE_T,ULONG,SIZE_T*);
+ NTSTATUS  WINAPI MmCopyVirtualMemory(PEPROCESS,void*,PEPROCESS,void*,SIZE_T,KPROCESSOR_MODE,SIZE_T*);
+ void *    WINAPI MmGetSystemRoutineAddress(UNICODE_STRING*);
+ PVOID     WINAPI MmMapLockedPages(MDL*,KPROCESSOR_MODE);

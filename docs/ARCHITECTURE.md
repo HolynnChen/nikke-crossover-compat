@@ -53,10 +53,14 @@ illegal-instruction classification.
 
 ## Wine module overlay
 
-The pinned-source builder applies reviewable patches and builds three PE
-modules. `prepare_runtime.py --modules` copies those modules into a new local
-runtime view while linking unchanged components to the existing installation.
-No driver or game image is rewritten.
+The pinned-source builder applies reviewable patches and builds four PE
+modules (ntoskrnl, mfplat, mfreadwrite, ntdll), a minimal Wine system-process
+executable, and ntdll's Unix half.
+`prepare_runtime.py --modules` copies those into a new local runtime view
+while linking unchanged components to the existing installation, and fails
+loudly if the built `ntdll.so` is not x86_64. No driver or game image is
+rewritten. `docs/APPLIED-TECHNIQUES.md` lists exactly which files that view
+replaces, and the evidence for each of them.
 
 The kernel changes provide actual synchronization, object-name lifetime,
 callback-list ownership, and caller-owned memory-range arrays. Their limits
@@ -68,3 +72,31 @@ Media experiments are opt-in capability fallbacks. They neither produce
 fake shared handles nor claim to implement cross-device resource sharing.
 Successful software decoding in the independent probe requires an application
 that supports CPU frames; Unity's response must be verified separately.
+
+## September update
+
+Patch order is kernel, thread-owner, September update, ACE kernel exports,
+ACE extended exports, ACE CORE driver stubs, the kernel-mode Rosetta NOP fix,
+the user-mode Rosetta NOP fix, media fallback, then the Chromium command-line
+patch. The last two are the two halves of ntdll and do not overlap: the
+Chromium patch edits the PE-side `loader.c`, the NOP patch the Unix-side
+`signal_x86_64.c`. The order is load-bearing:
+each patch is generated against the files as the previous ones left them, so
+the NOP patches in particular must stay after `september-update`, which also
+touches `instr.c`. The historical `thread-process-experimental` filename
+remains for provenance; its implementation is now part of the default build. DW-Proton contributions
+and local changes are itemized in THIRD_PARTY.md.
+
+The memory mapping layer retains a mapped section view while an MDL references
+it and delays unmapping until the last retained mapping is released. It remains
+a Wine user-space model, not host physical-memory access. Process exit status
+and user-thread context come from actual queried objects. Unsupported requests
+remain failures.
+
+The driver-entry compatibility shim places the entry return address in the
+upper canonical range and converts matching address faults back into Wine's
+user-space address model. This broad upstream exception translation is not a
+complete guest kernel or interrupt backend. The `lsass.exe` Wine component
+registers as a system process and waits for shutdown; it provides no Windows
+security-service implementation. Installation copies it and adds a RunServices
+entry only in a stopped, cloned bottle.

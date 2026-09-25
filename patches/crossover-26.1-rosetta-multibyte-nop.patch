@@ -1,0 +1,91 @@
+Subject: [PATCH] ntdll: emulate the register form of the multi-byte NOP under Rosetta
+
+Rosetta 2 cannot translate the register form of the multi-byte NOP
+(0F 1F /0 with ModRM.mod == 3) and raises SIGILL instead.  The encoding is
+valid x86 that real CPUs treat as a no-op, and the memory forms of the
+same instruction translate fine.
+
+Unity's IL2CPP runtime uses this encoding, so il2cpp_init died on it and
+the game reported "Failed to initialize IL2CPP".  Follow the existing
+Apple-only hacks in this file (handle_cet_nop, emulate_xgetbv) and skip
+the instruction.
+
+---
+
+--- a/dlls/ntdll/unix/signal_x86_64.c
++++ b/dlls/ntdll/unix/signal_x86_64.c
+@@ -1999,6 +1999,64 @@
+ }
+ 
+ /***********************************************************************
++ *           handle_rosetta_nop
++ *
++ * Check if the fault location is the register form of the multi-byte NOP
++ * (0F 1F /0 with ModRM.mod == 3).  That encoding is valid x86 and real
++ * CPUs treat it as a no-op, but Rosetta 2 refuses to translate it and
++ * raises an invalid-opcode exception instead.  The memory forms of the
++ * same instruction translate fine.
++ *
++ * ACE's anti-cheat driver and Unity's IL2CPP runtime both use this
++ * encoding, so without this the ACE driver fails to load (the service
++ * returns ERROR_GEN_FAILURE and ACE blocks the game) and the game then
++ * dies with "Failed to initialize IL2CPP".
++ * CW HACK
++ */
++static inline BOOL handle_rosetta_nop( ucontext_t *sigcontext, CONTEXT *context )
++{
++    BYTE instr[16];
++    unsigned int i, prefix_count = 0;
++    unsigned int len = virtual_uninterrupted_read_memory( (BYTE *)context->Rip, instr, sizeof(instr) );
++
++    for (i = 0; i < len; i++) switch (instr[i])
++    {
++    /* instruction prefixes */
++    case 0x2e:  /* %cs: */
++    case 0x36:  /* %ss: */
++    case 0x3e:  /* %ds: */
++    case 0x26:  /* %es: */
++    case 0x40: case 0x41: case 0x42: case 0x43:  /* rex */
++    case 0x44: case 0x45: case 0x46: case 0x47:
++    case 0x48: case 0x49: case 0x4a: case 0x4b:
++    case 0x4c: case 0x4d: case 0x4e: case 0x4f:
++    case 0x64:  /* %fs: */
++    case 0x65:  /* %gs: */
++    case 0x66:  /* opcode size */
++    case 0x67:  /* addr size */
++    case 0xf0:  /* lock */
++    case 0xf2:  /* repne */
++    case 0xf3:  /* repe */
++        if (++prefix_count >= 15) return FALSE;
++        continue;
++
++    case 0x0f:  /* extended instruction */
++        if (i + 2 >= len || instr[i + 1] != 0x1f) return FALSE;
++        /* NOP r/m32: opcode extension /0 */
++        if (((instr[i + 2] >> 3) & 7) != 0) return FALSE;
++        /* only the register form fails to translate under Rosetta */
++        if (((instr[i + 2] >> 6) & 3) != 3) return FALSE;
++        RIP_sig(sigcontext) += i + 3;
++        TRACE_(seh)( "emulated a multi-byte NOP\n" );
++        return TRUE;
++
++    default:
++        return FALSE;
++    }
++    return FALSE;
++}
++
++/***********************************************************************
+  *           emulate_xgetbv
+  *
+  * Check if the fault location is an Intel XGETBV instruction for xcr0 and
+@@ -2518,6 +2576,9 @@
+         if (handle_cet_nop( ucontext, &context.c )) return;
+         /* CW HACK 23427 */
+         if (emulate_xgetbv( ucontext, &context.c )) return;
++        /* CW HACK: Rosetta 2 cannot translate the register form of the
++           multi-byte NOP (0F 1F /0 with ModRM.mod == 3). */
++        if (handle_rosetta_nop( ucontext, &context.c )) return;
+ #endif
+         rec.ExceptionCode = EXCEPTION_ILLEGAL_INSTRUCTION;
+         break;

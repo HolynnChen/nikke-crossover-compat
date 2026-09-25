@@ -1,0 +1,156 @@
+--- a/dlls/ntoskrnl.exe/sync.c
++++ b/dlls/ntoskrnl.exe/sync.c
+@@ -1483,4 +1483,40 @@
+     KeReleaseSpinLock( &queue->Lock, irql );
+ 
+     return entry;
++}
++
++/***********************************************************************
++ *           KeTryToAcquireGuardedMutex   (NTOSKRNL.EXE.@)
++ *
++ * Non-blocking variant: uses the underlying fast mutex counter. Count == 1
++ * means free, 0 means held (see ExAcquireFastMutexUnsafe).
++ */
++BOOLEAN WINAPI KeTryToAcquireGuardedMutex(PKGUARDED_MUTEX mutex)
++{
++    PFAST_MUTEX fast = (PFAST_MUTEX)mutex;
++    LONG count;
++
++    TRACE("mutex %p.\n", mutex);
++
++    count = InterlockedDecrement(&fast->Count);
++    if (count < 0)
++    {
++        InterlockedIncrement(&fast->Count);
++        return FALSE;
++    }
++    return TRUE;
+ }
++
++/***********************************************************************
++ *           KeIpiGenericCall   (NTOSKRNL.EXE.@)
++ *
++ * Wine has no inter-processor interrupt support. The broadcast worker is run
++ * once on the current processor, which is the whole job on a single "CPU".
++ */
++ULONG_PTR WINAPI KeIpiGenericCall(ULONG_PTR (*callback)(ULONG_PTR), ULONG_PTR context)
++{
++    if (!callback) return 0;
++
++    FIXME("callback %p context %#Ix: running on the current processor only\n", callback, context);
++    return callback(context);
++}
+--- a/dlls/ntoskrnl.exe/ntoskrnl.c
++++ b/dlls/ntoskrnl.exe/ntoskrnl.c
+@@ -3847,6 +3847,11 @@
+  */
+ void WINAPI KeBugCheck(ULONG code)
+ {
++    ULONG_PTR *sp = (ULONG_PTR *)__builtin_frame_address(0);
++    int i;
++
++    ERR( "KeBugCheck %lx called from %p\n", code, __builtin_return_address(0) );
++    for (i = 0; i < 24; i++) ERR( "  stack[%d] = %p\n", i, (void *)sp[i] );
+     KeBugCheckEx(code, 0, 0, 0, 0);
+ }
+ 
+@@ -3855,7 +3860,11 @@
+  */
+ void WINAPI KeBugCheckEx(ULONG code, ULONG_PTR param1, ULONG_PTR param2, ULONG_PTR param3, ULONG_PTR param4)
+ {
+-    ERR( "%lx %Ix %Ix %Ix %Ix\n", code, param1, param2, param3, param4 );
++    void *caller = __builtin_return_address(0);
++    void *frame1 = __builtin_frame_address(1);
++    ERR( "%lx %Ix %Ix %Ix %Ix (caller %p frame %p)\n", code, param1, param2, param3, param4, caller, frame1 );
++    if (frame1) ERR( "  caller stack: %p %p %p %p\n", ((void **)frame1)[1], ((void **)frame1)[2],
++                     ((void **)frame1)[3], ((void **)frame1)[4] );
+     ExitProcess( code );
+ }
+ 
+@@ -4851,3 +4860,67 @@
+     }
+     return TRUE;
+ }
++
++/***********************************************************************
++ *           KeSetSystemGroupAffinityThread   (NTOSKRNL.EXE.@)
++ */
++NTSTATUS WINAPI KeSetSystemGroupAffinityThread(GROUP_AFFINITY *affinity, GROUP_AFFINITY *previous)
++{
++    KAFFINITY old;
++
++    TRACE("affinity %p previous %p.\n", affinity, previous);
++
++    if (!affinity) return STATUS_INVALID_PARAMETER;
++
++    old = KeSetSystemAffinityThreadEx(affinity->Mask);
++
++    if (previous)
++    {
++        memset(previous, 0, sizeof(*previous));
++        previous->Mask = old;
++    }
++    return STATUS_SUCCESS;
++}
++
++/***********************************************************************
++ *           KeRevertToUserGroupAffinityThread   (NTOSKRNL.EXE.@)
++ */
++void WINAPI KeRevertToUserGroupAffinityThread(GROUP_AFFINITY *previous)
++{
++    TRACE("previous %p.\n", previous);
++
++    if (previous && previous->Mask) KeSetSystemAffinityThreadEx(previous->Mask);
++    else KeRevertToUserAffinityThread();
++}
++
++/***********************************************************************
++ *           KeGetProcessorNumberFromIndex   (NTOSKRNL.EXE.@)
++ */
++NTSTATUS WINAPI KeGetProcessorNumberFromIndex(ULONG index, PROCESSOR_NUMBER *number)
++{
++    TRACE("index %lu number %p.\n", index, number);
++
++    if (!number) return STATUS_INVALID_PARAMETER;
++
++    memset(number, 0, sizeof(*number));
++    number->Group = 0;
++    number->Number = index;
++    return STATUS_SUCCESS;
++}
++
++/***********************************************************************
++ *           PsGetCurrentThreadTeb   (NTOSKRNL.EXE.@)
++ */
++void *WINAPI PsGetCurrentThreadTeb(void)
++{
++    return NtCurrentTeb();
++}
++
++/***********************************************************************
++ *           ObDereferenceObjectDeferDelete   (NTOSKRNL.EXE.@)
++ */
++void WINAPI ObDereferenceObjectDeferDelete(void *object)
++{
++    TRACE("object %p.\n", object);
++    ObfDereferenceObject(object);
++}
+--- a/dlls/ntoskrnl.exe/ntoskrnl.exe.spec
++++ b/dlls/ntoskrnl.exe/ntoskrnl.exe.spec
+@@ -1711,6 +1711,15 @@
+ @ cdecl wcstoul(wstr ptr long)
+ @ cdecl wctomb(ptr long)
+ 
++# AntiCheatExpert (ACE) driver requirements
++@ stdcall KeGetProcessorNumberFromIndex(long ptr)
++@ stdcall KeIpiGenericCall(ptr long)
++@ stdcall KeRevertToUserGroupAffinityThread(ptr)
++@ stdcall KeSetSystemGroupAffinityThread(ptr ptr)
++@ stdcall KeTryToAcquireGuardedMutex(ptr)
++@ stdcall ObDereferenceObjectDeferDelete(ptr)
++@ stdcall PsGetCurrentThreadTeb()
++
+ ################################################################
+ # Wine internal extensions
+ #

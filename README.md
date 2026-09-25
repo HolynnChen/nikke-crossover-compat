@@ -2,15 +2,22 @@
 
 **让《胜利女神：NIKKE》Windows PC 版在 Apple Silicon Mac 上通过 CrossOver 运行。**
 
-[English](README.en.md) · [验证记录](docs/VALIDATION.md) · [技术设计](docs/ARCHITECTURE.md) · [CEF 渲染补丁](docs/CHROMIUM-FLAGS.md)
+[English](README.en.md) · [安装指南](docs/INSTALL.zh-CN.md) · [真正在用的技术](docs/APPLIED-TECHNIQUES.zh-CN.md) · [验证记录](docs/VALIDATION.md) · [技术设计](docs/ARCHITECTURE.md) · [CEF 渲染补丁](docs/CHROMIUM-FLAGS.md)
 
 这是面向 NIKKE 的实验性兼容补丁。它针对本次测试中遇到的启动异常、部分 Wine 接口缺失和背景视频黑屏问题，并提供固定在 CrossOver 中的启动入口。
 
-**已实测：进入大厅和战斗、背景动画正常；通过固定入口重新启动并开启高清后，用户确认超过 10 分钟没有 ACE 弹窗，画面明显更清楚。** 帧率体感正常，尚未做定量 FPS 和长时间稳定性测试。
+**2026-09-26 更新：找到苹果芯片上进不去的真正根因——Rosetta 2 无法翻译 `0F 1F` 的寄存器形式 NOP，它同时卡死了 ACE 内核驱动和 Unity 的 IL2CPP。** 详见 [本次更新](docs/UPDATE-2026-09-26.zh-CN.md)。
+
+**2026-09-23 更新：补齐 ACE 反作弊所需的内核导出，新增完整安装指南。** 详见 [本次更新](docs/UPDATE-2026-09-23.zh-CN.md)。
+
+**2026-09-22 更新：适配 NIKKE PC 国际服 152.8.11。** 已在 Apple Silicon + CrossOver 26.1 上实测进入大厅、战斗和爬塔；恢复可玩配置后，用户再次确认大厅页面可正常切换、不卡顿。背景动画正常，帧率体感正常。
+
+本次发布为 **0.4.0 实验性源码更新**，在 0.3.0 基础上修掉 Rosetta 不支持的多字节 NOP（ACE 内核驱动与 IL2CPP 的同一个根因），并补齐 ACE CORE 驱动所需的 10 个 stub。详见 [本次更新](docs/UPDATE-2026-09-26.zh-CN.md)、[0.3.0 更新](docs/UPDATE-2026-09-23.zh-CN.md) 与 [0.2.0 更新](docs/UPDATE-2026-09-22.zh-CN.md)。
 
 ## 它解决什么问题？
 
-- **启动兼容性：**处理本机 Rosetta 无法正确执行的少量 NOP 指令形式，修正特权指令异常分类，并补充游戏启动过程中调用的部分 Wine 内核接口。
+- **ACE 反作弊启动失败：**补齐 ACE 调用但 CrossOver 未实现的 7 个 `ntoskrnl.exe` 内核导出（`KeTryToAcquireGuardedMutex`、`KeIpiGenericCall`、`PsGetCurrentThreadTeb` 等）。缺失会使游戏直接拒绝启动。
+- **启动兼容性：**处理本机 Rosetta 无法正确执行的少量 NOP 指令形式（macOS 侧 `nop_bridge`，以及 Wine 侧新增的 ntoskrnl / ntdll 模拟），修正特权指令异常分类，并补充游戏启动过程中调用的部分 Wine 内核接口与 ACE 驱动所需的 stub。
 - **背景动画黑屏：**让视频播放尽早使用应用支持的软件回退路径。
 - **后续启动：**把配置和运行时保存在持久目录，直接从 CrossOver 的程序列表打开官方 NIKKE 启动器。
 - **画面模糊：**支持在这个独立容器中开启 CrossOver 高分辨率模式；本机窗口配置由 1388×781 提高至 2202×1340。
@@ -19,7 +26,7 @@
 
 ## 使用前需要什么？
 
-目前验证环境为 **Apple M4 Max、macOS 26.6.2、CrossOver 26.1**。其他硬件、CrossOver 版本和后续游戏更新尚未验证。
+本次验证环境为 **Apple M4 Max、macOS 27.0、CrossOver 26.1、NIKKE 152.8.11 国际服**。旧版记录来自 macOS 26.6.2。其他硬件、CrossOver 版本和后续游戏更新尚未验证。
 
 你需要：
 
@@ -30,6 +37,10 @@
 本仓库只提供源码，不包含游戏、ACE 文件、CrossOver 二进制或账号数据。测试环境此前已使用 [li-miniloader-wine-fix](https://github.com/Dorin130/li-miniloader-wine-fix) 以及 CEF 启动器修复；这些依赖不由本项目安装。若官方启动器本身打不开，应先解决启动器问题。
 
 ## 安装
+
+**当前运行时究竟替换了哪 5 个文件、各自证据是什么，见 [真正在用的技术](docs/APPLIED-TECHNIQUES.zh-CN.md)。**
+
+**完整步骤见 [安装指南](docs/INSTALL.zh-CN.md)。** 下面是概要。
 
 以下命令在本仓库根目录执行。先完全退出源容器里的游戏、启动器和后台进程。
 
@@ -46,14 +57,15 @@ make test
 
 ```sh
 python3 scripts/build_wine_modules.py \
-    --archive /absolute/path/to/crossover-sources-26.1.0.tar.gz
+    --archive /absolute/path/to/crossover-sources-26.1.0.tar.gz \
+    --output local/wine-modules-0.2.0
 
 python3 scripts/prepare_runtime.py \
     --output local/runtime-modules \
-    --modules local/wine-modules/build
+    --modules local/wine-modules-0.2.0/build
 ```
 
-构建脚本会验证源码包的固定 SHA-256。Bison 默认路径为 `/opt/homebrew/opt/bison/bin/bison`，不同安装位置可通过 `--bison` 指定。
+构建脚本默认包含本次更新、线程所属进程接口及最小 Wine `lsass.exe` 组件，并验证源码包的固定 SHA-256。Bison 默认路径为 `/opt/homebrew/opt/bison/bin/bison`，不同安装位置可通过 `--bison` 指定。
 
 ### 3. 添加 CrossOver 固定入口
 
@@ -71,6 +83,23 @@ python3 scripts/install_crossover_entry.py \
 
 运行时存放在 `~/Library/Application Support/NIKKE Compatibility`，依赖现有的 CrossOver 安装。不要删除该目录；不再需要保留临时测试目录才能启动。
 
+## 已安装旧版，如何升级？
+
+GitHub 源码更新不会自动替换本机运行时。退出旧容器后，按上面的步骤重新构建，使用新的输出目录；然后使用下面的安装命令（替换源容器名称）：
+
+```sh
+python3 scripts/install_crossover_entry.py \
+    --source-prefix "$HOME/Library/Application Support/CrossOver/Bottles/YOUR_NIKKE_BOTTLE" \
+    --source-runtime local/runtime-modules \
+    --source-app build/NopBridgeLab.app \
+    --source-bridge build/libnop_bridge.dylib \
+    --bottle-name NIKKE-Compatibility-152 \
+    --menu-name "NIKKE Compatibility 152" \
+    --support "$HOME/Library/Application Support/NIKKE Compatibility 152"
+```
+
+新入口确认可用前，保留原入口和运行时。新安装会在复制的容器中配置 Wine 系统进程组件，不影响 macOS 服务或原容器。
+
 ## 以后怎么启动？
 
 重新打开 CrossOver，进入：
@@ -83,14 +112,12 @@ python3 scripts/install_crossover_entry.py \
 
 ## 已知限制
 
-- 验证范围是本机进入大厅、战斗及重启后超过 10 分钟无 ACE 弹窗，不是长期稳定性承诺。
-- 已验证能玩的运行时仍会记录缺失 `PsGetThreadProcess` 的驱动进程异常。短时可玩不等于每个 ACE 组件或检查都成功。
-- 对应候选补丁已通过独立接口测试，但尚未做游戏验证，默认不启用。开发者可用 `build_wine_modules.py --with-thread-process` 构建该候选。
-- 部分 Wine 内核行为仍不完整；背景恢复依赖应用支持软件解码回退，尚未验证所有过场。
-- 每次处理无法原生执行的 NOP 都有信号处理成本，未测定量性能影响。
-- CrossOver 或游戏更新后可能需要重新适配。
+- 当前配置已实测可玩，但两个后台 ACE CORE 驱动进程仍有异常退出记录；这不代表所有保护组件或检查均正常，也不是官方支持声明。
+- **不要用 CrossOver 原版 `ntoskrnl.exe` 覆盖本项目构建的版本；本项目的版本是原版的超集，覆盖回去会导致 ACE 报 `unimplemented function` 并拒绝启动。**
+- 发布源码已去除临时诊断和内存快照代码。干净构建的接口测试与用户实玩验证分别记录；新安装流程尚未完成从安装到战斗的整体验证，见 [验证记录](docs/VALIDATION.md)。
+- 未做长期稳定性、定量 FPS 或所有过场测试。CrossOver 或游戏更新后可能需要重新适配。
 
-技术实验、失败路径和测试细节见 [验证记录](docs/VALIDATION.md)。本项目通过运行时/API 兼容处理工作，不修改游戏或 ACE 二进制，也不伪造反作弊成功结果。
+本项目修改 Wine 兼容层，不分发或修改游戏、ACE 二进制，也不把失败的接口查询替换为固定成功值。部分接口仍明确返回不支持。
 
 ## 开发与贡献
 
@@ -103,13 +130,14 @@ make test
 Windows/Wine 接口测试需要独立、可丢弃的测试容器：
 
 ```sh
-python3 scripts/test_windows.py --prefix /absolute/path/to/test-bottle
+python3 scripts/test_windows.py --prefix /absolute/path/to/test-bottle \
+    --runtime local/runtime-modules
 python3 scripts/test_wine_modules.py \
     --prefix /absolute/path/to/test-bottle \
     --runtime local/runtime-modules
 ```
 
-候选线程接口测试需额外传入 `--with-thread-process`。发布纯源码包：
+上述测试默认包含线程所属进程、真实退出状态、线程上下文及映射生命周期。发布纯源码包：
 
 ```sh
 python3 scripts/package_source.py
@@ -121,4 +149,4 @@ python3 scripts/package_source.py
 
 采用 **LGPL-2.1-or-later**，详见 [LICENSE](LICENSE) 与 [第三方来源说明](THIRD_PARTY.md)。
 
-感谢 Wine、CodeWeavers、Endfield_FineWine 及此前启动器修复项目提供的公开工作。NIKKE、CrossOver 和 Rosetta 均为各自权利人的产品；本项目是独立的社区兼容研究。
+感谢 Wine、CodeWeavers、DW-Proton、Endfield_FineWine 及此前启动器修复项目提供的公开工作。NIKKE、CrossOver 和 Rosetta 均为各自权利人的产品；本项目是独立的社区兼容研究。
