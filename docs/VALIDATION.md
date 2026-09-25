@@ -150,6 +150,30 @@ confirmed normal background animation during resource downloading. Several
 kernel changes also occurred between runs, so this is a successful observed
 configuration, not a controlled single-variable game A/B result.
 
+The two Media Foundation options were revisited on 2026-09-26 against the
+current patch set, and they turn out to be a **pair rather than alternatives**.
+With only `NOP_BRIDGE_MF_NO_DXGI=1` set, entering a story scene
+(`StoryEvent` / `EpisodePlayOverlay`) hands the game: the process stays alive,
+one core spins at ~103% CPU, and `Player.log` stops for 206 seconds. `sample`
+shows the GStreamer video threads blocked in `g_cond_wait`, with ten pipelines
+(`qtdemux` / `multiqueue` / `vtdechw`) accumulated in the process. The last log
+entries are five parallel `WindowsVideoMedia error 0x80004001` with
+`Context: Creating DXGI DeviceManager`, which is the `E_NOTIMPL` this patch
+returns from that branch.
+
+Adding `NOP_BRIDGE_MF_SOFTWARE=1` with everything else identical clears it: the
+software path reports `using system-memory video samples` six times (zero
+before), the same story transition completes and continues to the battle result,
+CPU settles to ~52%, and the scene renders. This is a clean single-variable
+comparison and it closes the earlier results rather than contradicting them --
+`MF_SOFTWARE` alone had failed because the device manager still existed, and
+`NO_DXGI` alone sufficed for the download-screen animation but not for story
+video. Both together are the self-consistent software video path.
+
+The permanent switch-over to an entry point that carries both switches was still
+pending when this was recorded; the app bundle's `Info.plist` does not include
+`NOP_BRIDGE_MF_SOFTWARE`, so launching from the icon still hangs on story video.
+
 ## ACE
 
 The official ACE service was installed in the clone. A separate normal

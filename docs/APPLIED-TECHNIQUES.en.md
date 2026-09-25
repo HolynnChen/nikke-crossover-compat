@@ -61,7 +61,7 @@ previous ones left it.
 | 6 | `ace-core-driver-stubs` | `ntoskrnl.c` `*.spec` | The ten stubs ACE's CORE drivers import | ntoskrnl.exe |
 | 7 | **`ntoskrnl-rosetta-nop`** | `instr.c` | **Kernel-mode multi-byte NOP decode + handling `EXCEPTION_ILLEGAL_INSTRUCTION`** | ntoskrnl.exe |
 | 8 | `rosetta-multibyte-nop` | `ntdll/unix/signal_x86_64.c` | User-mode `handle_rosetta_nop()` | **ntdll.so** |
-| 9 | `mf-software` | `mfreadwrite/reader.c` `mfplat/main.c` | Media Foundation software fallback (a DXGI shared-handle capability query fails honestly instead of faking success) | mfplat.dll, mfreadwrite.dll |
+| 9 | `mf-software` | `mfreadwrite/reader.c` `mfplat/main.c` | Media Foundation software fallback. **It contains two switches that must be paired**: `NOP_BRIDGE_MF_NO_DXGI` makes `MFCreateDXGIDeviceManager` return `E_NOTIMPL`, `NOP_BRIDGE_MF_SOFTWARE` stops the reader fetching a D3D manager. Setting only the first hangs the game -- see 5.3 | mfplat.dll, mfreadwrite.dll |
 
 Patch 7 is the core of this fix. Patches 1–6 and 9 predate 0.4.0.
 
@@ -77,7 +77,7 @@ From `LSEnvironment` in `NIKKE Wine.app/Contents/Info.plist`. This part is
 | `DYLD_INSERT_LIBRARIES` | Injects `libnop_bridge.dylib` (`src/bridge.c` + `nop_decode.h` + `priv_decode.h`) |
 | `NOP_BRIDGE_PRIVILEGED=1` | Enables the `priv_decode` path: recasts a `MOV CR*` trap 6 as trap 13 |
 | `NOP_BRIDGE_NTDLL` | Points at `runtime-modules/.../x86_64-unix/ntdll.so` (row 2 above) |
-| `NOP_BRIDGE_MF_NO_DXGI=1` | Enables the NO_DXGI branch of `mf-software` |
+| `NOP_BRIDGE_MF_NO_DXGI=1` | Enables the NO_DXGI branch of `mf-software`. **Must be set together with `NOP_BRIDGE_MF_SOFTWARE=1`**, or the video pipeline stalls and hangs the game (see 5.3) |
 | `NOP_BRIDGE_APP_PROGRAM/CWD` | Names the hosted program and its working directory |
 | `NOP_BRIDGE_LOG` | Where the bridge writes |
 | `CX_GRAPHICS_BACKEND=dxvk` | **DXVK is the backend, not CrossOver's DXMT/Metal** — this decides section 5.1 |
@@ -155,6 +155,48 @@ not something this merge introduced.
 > materializes that directory unconditionally before copying anything in;
 > CrossOver's mtime and md5 were checked before and after and are unchanged.
 
+### 5.3 The video pipeline stalls unless both MF switches are paired (new)
+
+**Symptom.** Entering a story scene (`StoryEvent` / `EpisodePlayOverlay`) makes the
+game **hang without exiting** -- process alive, one core pinned at 103% CPU,
+`Player.log` silent (measured: 206 seconds). `sample` shows the video pipeline
+threads all **blocked** in `g_cond_wait`, with ten GStreamer pipelines
+(`qtdemux` / `multiqueue` / `vtdechw`) piled up in the process.
+
+**Trigger.** The last thing in `Player.log` before the silence is five parallel
+
+```
+WindowsVideoMedia error 0x80004001
+Context: Creating DXGI DeviceManager      <- this is where it fails
+```
+
+`0x80004001` is `E_NOTIMPL`, **produced by this patch's NO_DXGI branch**.
+
+**Mechanism.** `NOP_BRIDGE_MF_NO_DXGI=1` prevents Unity from obtaining a DXGI
+device manager (so Unity falls back to software), but the reader still behaves as
+if D3D frames are coming. The mismatch stalls the pipeline once it starts.
+Adding `NOP_BRIDGE_MF_SOFTWARE=1` makes the reader skip the D3D manager and emit
+system-memory samples, matching Unity's software fallback; the stall goes away.
+
+**Measured A/B** (environment identical except `MF_SOFTWARE`):
+
+| | `NO_DXGI` only | `NO_DXGI` + `MF_SOFTWARE` |
+|---|---|---|
+| `using system-memory video samples` | **0** | **6** |
+| The same `EventFieldHud -> StoryEvent` | hangs, 206 s silent | passes, continues to the battle result |
+| Game process CPU | 103% (spinning) | ~52% (decoding) |
+| Screen | frozen | story renders normally |
+
+This does not contradict the earlier findings in `VALIDATION.md`; it completes
+them. `MF_SOFTWARE` **alone** failed (the manager is still created, so Unity keeps
+asking for `IMFDXGIBuffer` and logs `E_NOINTERFACE`). `NO_DXGI` **alone** was
+enough for the download-screen background animation, but stalls on story video.
+**Both together** are the self-consistent software video path.
+
+> Note: as of this commit the combination has only been validated in a manually
+> launched process. The app bundle's `Info.plist` does not yet carry
+> `NOP_BRIDGE_MF_SOFTWARE`, so launching from the icon still hangs. See section 8.
+
 ---
 
 ## 6. How these conclusions were reached
@@ -201,13 +243,28 @@ the evidence does not settle the question.
 | Item | Status |
 |---|---|
 | The user-mode `ntdll.so` patch | Covers **the same encoding** as the macOS-side `nop_bridge` (`src/nop_decode.h`). ACE still failed while the bridge was active, so the bridge does not cover the kernel path — but each one's contribution *inside the game process* has not been isolated |
-| `NOP_BRIDGE_MF_SOFTWARE` | **Not set**, while `NOP_BRIDGE_MF_NO_DXGI` is. The two are meant to travel together, so the current state is inconsistent. The game reaches the lobby, so this was left alone |
 | `crossover-26.1-thread-process-experimental.patch` | Only 28 lines; `ARCHITECTURE.md` notes its implementation is now part of the default build. The file is kept for provenance |
 | `ACE-CORE202797` | Still `STOPPED` (`sc start` returns `87 ERROR_INVALID_PARAMETER`). **Does not block the game** |
 
 ---
 
 ## 8. Reproducing
+
+**`MF_SOFTWARE` has to be included**, or story video hangs (5.3). The
+repository's own launcher entry already supports both switches:
+
+
+An equivalent wrapper is provided as `scripts/launch_nikke.sh` for daily use.
+```sh
+# launch with the video switches (no app-bundle signature involved)
+python3 scripts/launch_crossover.py \
+    --prefix "$HOME/Library/Application Support/NIKKE-Wine" \
+    --runtime local/runtime-modules \
+    --graphics dxvk --privileged-faults \
+    --software-video --disable-dxgi-video \
+    --workdir 'C:\\NIKKE\\Launcher' \
+    'C:\\NIKKE\\Launcher\\nikke_launcher.exe'
+```
 
 ```sh
 # 1. Build the five modules (ntdll.so is forced to x86_64, hashes printed)

@@ -56,7 +56,7 @@ Rosetta NOP 补丁之前，ACE 弹窗必现、`ACE-CORE102797` 停留在 `STOPPE
 | 6 | `ace-core-driver-stubs` | `ntoskrnl.c` `*.spec` | ACE CORE 驱动导入的 10 个 stub | ntoskrnl.exe |
 | 7 | **`ntoskrnl-rosetta-nop`** | `instr.c` | **内核态多字节 NOP 解码 + 处理 `EXCEPTION_ILLEGAL_INSTRUCTION`** | ntoskrnl.exe |
 | 8 | `rosetta-multibyte-nop` | `ntdll/unix/signal_x86_64.c` | 用户态 `handle_rosetta_nop()` | **ntdll.so** |
-| 9 | `mf-software` | `mfreadwrite/reader.c` `mfplat/main.c` | Media Foundation 软件回退（DXGI 共享句柄能力查询改为明确失败而非假装成功） | mfplat.dll、mfreadwrite.dll |
+| 9 | `mf-software` | `mfreadwrite/reader.c` `mfplat/main.c` | Media Foundation 软件回退。**含两个必须配对的开关**：`NOP_BRIDGE_MF_NO_DXGI` 让 `MFCreateDXGIDeviceManager` 返回 `E_NOTIMPL`，`NOP_BRIDGE_MF_SOFTWARE` 让 reader 不去取 D3D manager。只开前者会卡死游戏，见 5.3 | mfplat.dll、mfreadwrite.dll |
 
 第 7 条是本次修复的核心。第 1–6、9 条是 0.4.0 之前既有的成果。
 
@@ -77,7 +77,7 @@ Rosetta NOP 补丁之前，ACE 弹窗必现、`ACE-CORE102797` 停留在 `STOPPE
 | `DYLD_INSERT_LIBRARIES` | 注入 `libnop_bridge.dylib`（`src/bridge.c` + `nop_decode.h` + `priv_decode.h`） |
 | `NOP_BRIDGE_PRIVILEGED=1` | 启用 `priv_decode` 路径：把 `MOV CR*` 的 trap 6 改判为 trap 13 |
 | `NOP_BRIDGE_NTDLL` | 指向 `runtime-modules/.../x86_64-unix/ntdll.so`（即上表第 2 行） |
-| `NOP_BRIDGE_MF_NO_DXGI=1` | 启用 `mf-software` 的 NO_DXGI 分支 |
+| `NOP_BRIDGE_MF_NO_DXGI=1` | 启用 `mf-software` 的 NO_DXGI 分支。**必须与 `NOP_BRIDGE_MF_SOFTWARE=1` 同时设置**，否则视频管线停摆卡死游戏（见 5.3） |
 | `NOP_BRIDGE_APP_PROGRAM/CWD` | 指定被托管的程序与工作目录 |
 | `NOP_BRIDGE_LOG` | 桥的日志输出路径 |
 | `CX_GRAPHICS_BACKEND=dxvk` | **走 DXVK，不走 CrossOver 的 DXMT/Metal 后端**（决定了第五节第 1 条） |
@@ -145,6 +145,45 @@ PE 的 `.dll` 就必须一起覆盖，否则加载直接失败。
 > 就会**透过符号链接写进已安装的 CrossOver 目录**。脚本已改为无条件先实体化
 > 该目录、再拷入文件；构建前后已核对 CrossOver 的 mtime 与 md5 未变。
 
+### 5.3 视频管线停摆：两个 MF 开关必须配对（新结论）
+
+**症状**：进入剧情（`StoryEvent` / `EpisodePlayOverlay`）后游戏**假死不退出**——
+进程存活、单核 103% CPU 空转、`Player.log` 停止输出（实测静默 206 秒）。
+用 `sample` 抓栈可见视频管线线程全部**阻塞**在 `g_cond_wait`，
+进程里堆着 10 条 GStreamer 管线（`qtdemux` / `multiqueue` / `vtdechw`）。
+
+**触发点**：`Player.log` 里退出前是 5 个并行的
+
+```
+WindowsVideoMedia error 0x80004001
+Context: Creating DXGI DeviceManager      ← 就是这一步失败
+```
+
+`0x80004001` 是 `E_NOTIMPL`，**由本补丁的 NO_DXGI 分支产生**。
+
+**机制**：`NOP_BRIDGE_MF_NO_DXGI=1` 让 Unity 拿不到 DXGI device manager
+（Unity 因此退到软件回退），但 reader 侧仍在按"D3D 帧"的预期工作，
+两边不一致 → 视频管线起头后停摆。补上 `NOP_BRIDGE_MF_SOFTWARE=1` 后，
+reader 明确不取 D3D manager、产出系统内存样本，与 Unity 的软件回退一致，问题消失。
+
+**实测对照**（除 `MF_SOFTWARE` 外环境完全相同）：
+
+| | 只开 `NO_DXGI` | `NO_DXGI` + `MF_SOFTWARE` |
+|---|---|---|
+| `using system-memory video samples` | **0 次** | **6 次** |
+| 同一个 `EventFieldHud → StoryEvent` | 卡死，静默 206 秒 | 走过，继续到战斗结算 |
+| 游戏进程 CPU | 103%（空转） | ~52%（正常解码） |
+| 画面 | 冻住 | 剧情正常渲染 |
+
+这与 `VALIDATION.md` 里的早期结论不矛盾，正好拼完整：
+`MF_SOFTWARE` **单独**用会失败（manager 仍能创建，Unity 继续要 `IMFDXGIBuffer` 报
+`E_NOINTERFACE`）；`NO_DXGI` **单独**用在下载背景动画上够用，
+但在剧情播片场景会停摆。**两个一起**才是自洽的软件视频路径。
+
+> ⚠️ 截至本次提交，这个组合只在手动启动的进程里验证过；
+> app bundle 的 `Info.plist` 尚未包含 `NOP_BRIDGE_MF_SOFTWARE`，
+> 走图标启动仍会复发。切换方式见第八节。
+
 ---
 
 ## 六、判定方法（结论怎么来的）
@@ -186,13 +225,28 @@ PE 的 `.dll` 就必须一起覆盖，否则加载直接失败。
 | 项 | 情况 |
 |---|---|
 | 用户态 `ntdll.so` 补丁 | 与 macOS 侧 `nop_bridge`（`src/nop_decode.h`）覆盖**同一条编码**。桥生效时 ACE 仍失败，说明桥不覆盖内核路径；但两者在游戏进程里各自的贡献**未做隔离验证** |
-| `NOP_BRIDGE_MF_SOFTWARE` | **没有设置**，而 `NOP_BRIDGE_MF_NO_DXGI` 设置了。这两个是配套开关，当前处于不一致状态。游戏能进大厅，故未改动 |
 | `crossover-26.1-thread-process-experimental.patch` | 仅 28 行，`ARCHITECTURE.md` 说明其实现已并入默认构建，保留该文件是为了留下改动来源 |
 | `ACE-CORE202797` | 仍为 `STOPPED`（`sc start` 返回 `87 ERROR_INVALID_PARAMETER`）。**不影响进游戏** |
 
 ---
 
 ## 八、复现
+
+**注意 `MF_SOFTWARE` 必须带上**，否则剧情播片会卡死（5.3）。
+仓库自带的启动入口已经支持这两个开关：
+
+
+仓库里也备好了等价的封装脚本 `scripts/launch_nikke.sh`，日常直接用那个即可。
+```sh
+# 带齐视频开关的启动方式（不涉及 app bundle 签名）
+python3 scripts/launch_crossover.py \
+    --prefix "$HOME/Library/Application Support/NIKKE-Wine" \
+    --runtime local/runtime-modules \
+    --graphics dxvk --privileged-faults \
+    --software-video --disable-dxgi-video \
+    --workdir 'C:\\NIKKE\\Launcher' \
+    'C:\\NIKKE\\Launcher\\nikke_launcher.exe'
+```
 
 ```sh
 # 1. 构建 5 个模块（含 ntdll.so，会强制 x86_64 并打印哈希）
