@@ -184,6 +184,58 @@ reader 明确不取 D3D manager、产出系统内存样本，与 Unity 的软件
 > app bundle 的 `Info.plist` 尚未包含 `NOP_BRIDGE_MF_SOFTWARE`，
 > 走图标启动仍会复发。切换方式见第八节。
 
+### 5.4 硬解直通不可行（软件帧交付是唯一选择）
+
+**问题**：剧情播片时发热偏高，能否改回「GPU 硬解直通」？
+
+**结论：不能。** Unity 的 Media Foundation 视频路径靠 **DXGI 共享句柄**拿 GPU 帧，
+而两个可用后端都没有实现这个能力：
+
+| 符号 | DXMT 的 `dxgi.dll` | DXVK 的 `dxgi.dll` |
+|---|---|---|
+| `CreateSharedHandle` | 0 | 0 |
+| `OpenSharedHandle` | 0 | 0 |
+| `IDXGIResource1` | 0 | 0 |
+
+（Wine 内置 `dxgi.dll` 里有 `dxgi_resource_CreateSharedHandle`，但内置实现接不上 Unity 的这条路径。）
+
+**实测反证**：把两个 MF 开关都关掉（放开 DXGI 路径）后进剧情**必然复发卡死**，
+特征与修复前完全一致：日志静默 200 秒以上、单核 103% CPU 空转、
+GStreamer 管线堆积（`qtdemux` / `multiqueue` / `vtdechw`）。
+这同时证明了两点：开关配对是**承重**的，视频解码确实是 `vtdec_hw`。
+
+**软/硬的准确划分** —— 这点容易被误解：
+
+- **硬**：解码本身。管线里一直是 `vtdec_hw`（VideoToolbox，纯硬件元件）。
+- **软**：帧交付。因为拿不到共享句柄，每帧要多走一次「显存 → 系统内存 → 再上传」。
+
+所以 `NOP_BRIDGE_MF_SOFTWARE` **不是**「把解码改成软解」。它 2026-09-26 才被加上，
+而 `NOP_BRIDGE_MF_NO_DXGI` 从 2026-09-08 项目最初的安装脚本（commit `9b1884d`）就存在 ——
+**GPU 视频路径在本次修复之前很久就是关的**。
+
+**发热的实际来源**：
+
+- 剧情时：上面那次每帧拷贝。**无法靠恢复 DXGI 直通消除** —— 恢复即卡死。
+- 普通游玩时：D3D → Vulkan → Metal 的翻译层，叠加 Rosetta 2 的 x86-64 → ARM 翻译。
+  与 MF 开关完全无关。
+
+### 5.5 后端切换的坑（操作提醒）
+
+`CX_GRAPHICS_BACKEND` 的合法值是 `d3dmetal` / `dxmt` / `dxvk` / `wined3d`，
+由 Wine 侧的 `cxcompatdb.so` 读取后把 d3d dll 重定向到 `lib/dxmt` 或 `lib/dxvk`。
+
+**本机实测**：设 `d3dmetal` 时该后端被判为 unusable，**静默回退到 Wine 内置 d3d11** ——
+实际加载的是 `lib/wine/x86_64-windows/d3d11.dll` 加 `libMoltenVK.dylib`。
+因此**不能只看环境变量就断定后端生效**，要查实际加载的 dll 路径：
+
+```sh
+lsof -p <游戏PID> | grep -iE "d3d11|dxgi" | awk '{print $NF}'
+```
+
+出现 `lib/dxmt/...` 或 `lib/dxvk/...` 才是后端生效；
+`lib/wine/x86_64-windows/...` 说明已经回退到内置实现。
+
+
 ---
 
 ## 六、判定方法（结论怎么来的）

@@ -27,16 +27,24 @@ for f in "$LOADER" "$ROOT/build/libnop_bridge.dylib" \
     [ -e "$f" ] || { echo "missing required file: $f" >&2; exit 1; }
 done
 
+# The two Media Foundation switches and the graphics backend are overridable so
+# an experiment can be run without editing this file, e.g.
+#   NOP_BRIDGE_MF_NO_DXGI= NOP_BRIDGE_MF_SOFTWARE= scripts/launch_nikke.sh
+#   CX_GRAPHICS_BACKEND=d3dmetal scripts/launch_nikke.sh
+NOP_BRIDGE_MF_NO_DXGI=${NOP_BRIDGE_MF_NO_DXGI-1}
+NOP_BRIDGE_MF_SOFTWARE=${NOP_BRIDGE_MF_SOFTWARE-1}
+CX_GRAPHICS_BACKEND=${CX_GRAPHICS_BACKEND:-dxvk}
+
 exec env \
     CX_ROOT="/Applications/CrossOver.app/Contents/SharedSupport/CrossOver" \
-    CX_GRAPHICS_BACKEND="dxvk" \
+    CX_GRAPHICS_BACKEND="$CX_GRAPHICS_BACKEND" \
     CX_WINELOADER="$LOADER" \
     DYLD_INSERT_LIBRARIES="$ROOT/build/libnop_bridge.dylib" \
     NOP_BRIDGE_APP_CWD="$PREFIX/drive_c/NIKKE/Launcher" \
     NOP_BRIDGE_APP_PROGRAM='C:\NIKKE\Launcher\nikke_launcher.exe' \
     NOP_BRIDGE_LOG="${NOP_BRIDGE_LOG:-/tmp/nikke-stderr.log}" \
-    NOP_BRIDGE_MF_NO_DXGI=1 \
-    NOP_BRIDGE_MF_SOFTWARE=1 \
+    NOP_BRIDGE_MF_NO_DXGI="$NOP_BRIDGE_MF_NO_DXGI" \
+    NOP_BRIDGE_MF_SOFTWARE="$NOP_BRIDGE_MF_SOFTWARE" \
     NOP_BRIDGE_NTDLL="$RUNTIME/lib/wine/x86_64-unix/ntdll.so" \
     NOP_BRIDGE_PRIVILEGED=1 \
     WINEARCH=wow64 \

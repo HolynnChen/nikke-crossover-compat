@@ -197,6 +197,67 @@ enough for the download-screen background animation, but stalls on story video.
 > launched process. The app bundle's `Info.plist` does not yet carry
 > `NOP_BRIDGE_MF_SOFTWARE`, so launching from the icon still hangs. See section 8.
 
+### 5.4 GPU video pass-through is not achievable (software frame delivery is the only option)
+
+**Question.** Cutscenes run hot -- can we go back to GPU video pass-through?
+
+**No.** Unity's Media Foundation video path obtains GPU frames through **DXGI shared
+handles**, and neither available backend implements that capability:
+
+| Symbol | DXMT `dxgi.dll` | DXVK `dxgi.dll` |
+|---|---|---|
+| `CreateSharedHandle` | 0 | 0 |
+| `OpenSharedHandle` | 0 | 0 |
+| `IDXGIResource1` | 0 | 0 |
+
+(Wine's builtin `dxgi.dll` does carry `dxgi_resource_CreateSharedHandle`, but the
+builtin implementation cannot serve Unity's path.)
+
+**Measured disproof.** Clearing both MF switches (opening the DXGI path) makes the
+game **hang again on any story scene**, with exactly the pre-fix signature: log
+silent for 200+ seconds, one core spinning at 103% CPU, and GStreamer pipelines
+piling up (`qtdemux` / `multiqueue` / `vtdechw`). That proves two things at once:
+the switch pairing is **load-bearing**, and the decode really is `vtdec_hw`.
+
+**The precise hardware/software split**, which is easy to misread:
+
+- **Hardware**: the decode itself. The pipeline has always used `vtdec_hw`
+  (VideoToolbox, a hardware-only element).
+- **Software**: the frame handoff. Without shared handles every frame takes an
+  extra trip through system memory.
+
+So `NOP_BRIDGE_MF_SOFTWARE` is **not** "decode on the CPU". It was only added on
+2026-09-26, whereas `NOP_BRIDGE_MF_NO_DXGI` has been present since 2026-09-08 in
+the project's very first install script (commit `9b1884d`) -- **the GPU video path
+was switched off long before this fix**.
+
+**Where the heat actually comes from:**
+
+- During cutscenes: that per-frame copy. It **cannot be removed by restoring the
+  DXGI path**, because restoring it hangs the game.
+- During ordinary play: the D3D to Vulkan to Metal translation layer plus Rosetta
+  2's x86-64 to ARM translation, entirely unrelated to the MF switches.
+
+### 5.5 A backend-selection trap (operational note)
+
+The valid `CX_GRAPHICS_BACKEND` values are `d3dmetal` / `dxmt` / `dxvk` / `wined3d`.
+Wine-side `cxcompatdb.so` reads the variable and redirects the d3d dlls to
+`lib/dxmt` or `lib/dxvk`.
+
+**Measured here**: with `d3dmetal` the backend is judged unusable and the game
+**silently falls back to Wine's builtin d3d11** -- it loads
+`lib/wine/x86_64-windows/d3d11.dll` plus `libMoltenVK.dylib`. So **never conclude
+the backend took effect from the environment variable alone**; check which dlls
+were actually loaded:
+
+```sh
+lsof -p <game pid> | grep -iE "d3d11|dxgi" | awk '{print $NF}'
+```
+
+`lib/dxmt/...` or `lib/dxvk/...` means the backend is live;
+`lib/wine/x86_64-windows/...` means it fell back to the builtin implementation.
+
+
 ---
 
 ## 6. How these conclusions were reached

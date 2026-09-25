@@ -174,6 +174,35 @@ The permanent switch-over to an entry point that carries both switches was still
 pending when this was recorded; the app bundle's `Info.plist` does not include
 `NOP_BRIDGE_MF_SOFTWARE`, so launching from the icon still hangs on story video.
 
+### GPU video pass-through: attempted and ruled out (2026-09-26)
+
+Two follow-up experiments tested whether the video path could be moved back onto
+the GPU, because cutscenes run warm.
+
+First, the MF pair was cleared (DXGI path open) on the dxvk backend. The game
+reached `EventFieldHud` and then **hung on entering the story scene**, with the
+identical pre-fix signature: `Player.log` frozen for 200+ seconds, one core
+pinned near 103% CPU, and GStreamer pipelines accumulating (`qtdemux` /
+`multiqueue` / `vtdechw`). This demonstrates the switch pairing is load-bearing,
+and incidentally confirms the decoder in the pipeline is `vtdec_hw`
+(VideoToolbox, hardware-only) rather than a CPU decoder.
+
+Second, `CX_GRAPHICS_BACKEND` was set to `d3dmetal`. It did not take effect:
+the game still loaded `lib/wine/x86_64-windows/{d3d11,d3d9,dxgi}.dll` plus
+`libMoltenVK.dylib`, and `nikke_d3d9.log` was not touched, so neither DXMT nor
+DXVK was in use. `cxcompatdb.so` treats this backend as unusable and falls back
+to Wine's builtin implementation without failing loudly. Inspection of the
+backend dlls explains why the exercise is moot anyway: neither DXMT's nor DXVK's
+`dxgi.dll` exposes `CreateSharedHandle`, `OpenSharedHandle`, or `IDXGIResource1`,
+which is precisely the mechanism Unity's Media Foundation path needs for GPU
+frames.
+
+Conclusion: the software frame handoff is not a shortcut but the only workable
+configuration on this stack; the remaining per-frame copy cannot be removed
+without reintroducing the hang. Heat during ordinary play comes from the D3D to
+Vulkan to Metal and x86-64 to ARM translation layers, which the MF switches do
+not touch.
+
 ## ACE
 
 The official ACE service was installed in the clone. A separate normal
