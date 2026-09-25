@@ -197,46 +197,49 @@ enough for the download-screen background animation, but stalls on story video.
 > launched process. The app bundle's `Info.plist` does not yet carry
 > `NOP_BRIDGE_MF_SOFTWARE`, so launching from the icon still hangs. See section 8.
 
-### 5.4 GPU video pass-through is not achievable (software frame delivery is the only option)
+### 5.4 GPU video pass-through: not settled (earlier conclusion corrected)
 
-**Question.** Cutscenes run hot -- can we go back to GPU video pass-through?
+> **This section previously asserted that neither DXMT nor DXVK implements DXGI
+> shared handles, and therefore that pass-through is impossible. That assertion
+> was wrong and was corrected on 2026-09-26.** It was wrong for two methodological
+> reasons, recorded here so the mistake is not repeated.
 
-**No.** Unity's Media Foundation video path obtains GPU frames through **DXGI shared
-handles**, and neither available backend implements that capability:
+**Mistake one: the wrong module was searched.** `CreateSharedHandle` is a COM
+vtable method implemented in **`d3d11.dll`**, not in `dxgi.dll`; searching only
+`dxgi.dll` yields a false negative. All three implementations actually have it:
 
-| Symbol | DXMT `dxgi.dll` | DXVK `dxgi.dll` |
-|---|---|---|
-| `CreateSharedHandle` | 0 | 0 |
-| `OpenSharedHandle` | 0 | 0 |
-| `IDXGIResource1` | 0 | 0 |
+| Implementation | Evidence |
+|---|---|
+| DXVK `d3d11.dll` | `CreateSharedHandle: access / attributes / name`, `D3D11Device::OpenSharedResourceGeneric: Handle not found:`, `Failed to create shared resource:` |
+| DXMT `d3d11.dll` | `dxmt::DeviceTexture<...>::CreateSharedHandle(_SECURITY_ATTRIBUTES*, unsigned long, wchar_t const*, void**)` (mangled symbols) |
+| Wine builtin `d3d11.dll` | 4 matches |
 
-(Wine's builtin `dxgi.dll` does carry `dxgi_resource_CreateSharedHandle`, but the
-builtin implementation cannot serve Unity's path.)
+**Mistake two: the test used the wrong backend.** The experiment that "hung as
+soon as the DXGI path was opened" ran with `CX_GRAPHICS_BACKEND=d3dmetal`, which
+on this machine is judged unusable and **silently falls back to Wine's builtin
+d3d11**. That hang therefore only shows that the **builtin** implementation
+cannot do it -- **DXVK was never tested with the DXGI path open**.
 
-**Measured disproof.** Clearing both MF switches (opening the DXGI path) makes the
-game **hang again on any story scene**, with exactly the pre-fix signature: log
-silent for 200+ seconds, one core spinning at 103% CPU, and GStreamer pipelines
-piling up (`qtdemux` / `multiqueue` / `vtdechw`). That proves two things at once:
-the switch pairing is **load-bearing**, and the decode really is `vtdec_hw`.
+**What still holds:**
 
-**The precise hardware/software split**, which is easy to misread:
+- With the DXGI path open the game hangs on a story scene (reproduced under the
+  builtin d3d11): log silent for 200+ seconds, one core at 103% CPU, GStreamer
+  pipelines piling up.
+- The decoder really is `vtdec_hw` (VideoToolbox hardware); the frame handoff is
+  what goes through system memory.
+- `NOP_BRIDGE_MF_NO_DXGI` dates to 2026-09-08 (commit `9b1884d`), long before
+  this fix.
 
-- **Hardware**: the decode itself. The pipeline has always used `vtdec_hw`
-  (VideoToolbox, a hardware-only element).
-- **Software**: the frame handoff. Without shared handles every frame takes an
-  extra trip through system memory.
+**New open question.** DXVK's shared handles rely on Vulkan external-memory
+handles, and MoltenVK exposes only the base `VK_KHR_external_memory` -- none of
+`_win32`, `_fd` or `_metal`. So whether DXVK's shared handles function on macOS
+is still undetermined; it may degrade to an in-process share table (DXVK has
+`OpenSharedResourceGeneric` name-to-resource lookup), and **in-process sharing may
+well be sufficient for Unity's MF path**.
 
-So `NOP_BRIDGE_MF_SOFTWARE` is **not** "decode on the CPU". It was only added on
-2026-09-26, whereas `NOP_BRIDGE_MF_NO_DXGI` has been present since 2026-09-08 in
-the project's very first install script (commit `9b1884d`) -- **the GPU video path
-was switched off long before this fix**.
-
-**Where the heat actually comes from:**
-
-- During cutscenes: that per-frame copy. It **cannot be removed by restoring the
-  DXGI path**, because restoring it hangs the game.
-- During ordinary play: the D3D to Vulkan to Metal translation layer plus Rosetta
-  2's x86-64 to ARM translation, entirely unrelated to the MF switches.
+**TODO:** retest with a **verified-active `dxvk` backend** (check the loaded dll
+paths) plus both MF switches cleared. Until then, "pass-through is impossible"
+should not be treated as a conclusion.
 
 ### 5.5 A backend-selection trap (operational note)
 

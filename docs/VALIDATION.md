@@ -197,11 +197,25 @@ backend dlls explains why the exercise is moot anyway: neither DXMT's nor DXVK's
 which is precisely the mechanism Unity's Media Foundation path needs for GPU
 frames.
 
-Conclusion: the software frame handoff is not a shortcut but the only workable
-configuration on this stack; the remaining per-frame copy cannot be removed
-without reintroducing the hang. Heat during ordinary play comes from the D3D to
-Vulkan to Metal and x86-64 to ARM translation layers, which the MF switches do
-not touch.
+This record originally concluded that the software handoff was the only
+workable configuration, on the grounds that neither backend implements
+`CreateSharedHandle`. **That was wrong and is retracted on 2026-09-26.** Two
+methodological errors: `CreateSharedHandle` is a COM vtable method implemented in
+`d3d11.dll`, so searching `dxgi.dll` produced a false negative -- DXVK's
+`d3d11.dll` carries `CreateSharedHandle: access/attributes/name` and
+`D3D11Device::OpenSharedResourceGeneric`, DXMT's carries mangled
+`dxmt::DeviceTexture<...>::CreateSharedHandle` symbols, and Wine's builtin has
+four matches. And the hang above was produced under `d3dmetal`, which silently
+falls back to Wine's builtin d3d11, so **DXVK was never tested with the DXGI path
+open**; that run only shows the builtin implementation cannot do it.
+
+What survives is narrower: opening the DXGI path hangs the game under the builtin
+d3d11, and the decoder is `vtdec_hw` while the handoff goes through system memory.
+Whether DXVK's shared handles work on macOS remains open, since MoltenVK exposes
+only the base `VK_KHR_external_memory` and none of the platform handle extensions;
+it may fall back to in-process sharing, which could be enough for this purpose.
+The retest -- verified-active `dxvk` plus both MF switches cleared -- had not been
+run when this was written.
 
 ## ACE
 
