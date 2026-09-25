@@ -217,6 +217,34 @@ it may fall back to in-process sharing, which could be enough for this purpose.
 The retest -- verified-active `dxvk` plus both MF switches cleared -- had not been
 run when this was written.
 
+### DXVK made to load, and the DXGI retest with it (2026-09-26)
+
+DXVK turned out never to have been in use, despite `CX_GRAPHICS_BACKEND=dxvk` since
+the first commit. The runtime view is on `WINEDLLPATH` and shadows the prefix, so
+the variable alone resolved d3d dlls from the view to Wine's builtins. Setting
+`CX_ACTIVE_GRAPHICS_BACKEND` changed nothing, and installing DXVK into the prefix
+`system32` with a native override loaded the view's builtin PE under the native
+override. Only materialising DXVK's dlls inside the view worked, confirmed by the
+loaded dll's inode matching the view's file and by a freshly written d3d9.log;
+the user independently reported a large frame-rate improvement.
+
+With DXVK verified active and both MF switches cleared, the story scene still
+hangs -- log frozen past 90 seconds, one core at 103% CPU, GStreamer pipelines
+accumulating -- and Unity still logs `WindowsVideoMedia error 0x80004001` with
+`Context: Creating DXGIDeviceManager`. The patch was off, so that `E_NOTIMPL`
+comes from Wine's own `MFCreateDXGIDeviceManager`. The blocker is therefore not
+DXVK's shared-handle support but mfplat being unable to provide a DXGI device
+manager here, which makes the MF switch pairing necessary regardless of backend.
+
+While materialising DXVK the 32-bit d3d dlls were written through the view's
+`lib/wine/i386-windows` symlink and damaged CrossOver's own copies. They were
+restored from the prefix's builtin copies after confirming the two agree, and
+`codesign --verify` passes on CrossOver.app. Recorded as a hazard: check that a
+view directory is not a symlink into CrossOver before replacing anything in it.
+
+Final configuration, measured: DXVK plus both MF switches, story scene passing
+normally at 62-96% CPU against 103% spinning while hung.
+
 ## ACE
 
 The official ACE service was installed in the clone. A separate normal

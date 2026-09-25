@@ -78,6 +78,16 @@ def prepare(crossover, target, modules=None):
         replacements["ntdll.dll"] = crossover / "lib/wine/x86_64-windows/ntdll.dll"
     if not replacements["ntdll.dll"].is_file():
         raise ValueError(f"PE ntdll.dll missing: {replacements['ntdll.dll']}")
+    # DXVK is a large frame-rate win over Wine's builtin wined3d, but it only
+    # takes effect if the dlls sit in this view: the view shadows the prefix, so
+    # a normal DXVK install plus a native override loads the view's own copies
+    # (Wine's builtin PE) instead. They are therefore materialised here, and
+    # launch_nikke.sh selects them with a native override. CrossOver's DXVK
+    # build ships no dxgi.dll, so Wine's builtin dxgi stays in place.
+    dxvk = crossover / "lib/dxvk/x86_64-windows"
+    for name in ("d3d9.dll", "d3d10.dll", "d3d10_1.dll", "d3d10core.dll", "d3d11.dll"):
+        source = dxvk / name
+        if source.is_file(): replacements[name] = source
     for entry in original.iterdir():
         if entry.name not in replacements: (windows / entry.name).symlink_to(entry)
     for name, module in replacements.items(): shutil.copy2(module, windows / name)

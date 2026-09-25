@@ -238,6 +238,58 @@ lsof -p <游戏PID> | grep -iE "d3d11|dxgi" | awk '{print $NF}'
 `lib/wine/x86_64-windows/...` 说明已经回退到内置实现。
 
 
+### 5.6 DXVK 必须放进运行时视图（性能关键，且视图会遮蔽前缀）
+
+**背景**：Wine 内置 wined3d 性能明显不足；DXVK 快很多（用户实测「帧率流畅许多」）。
+但本项目的配置里 `CX_GRAPHICS_BACKEND=dxvk` **从未真正生效过**，原因如下。
+
+**视图遮蔽前缀**：`WINEDLLPATH` 指向 `local/runtime-modules`，Wine 解析 d3d dll 时
+**先命中视图**。因此：
+
+| 做法 | 结果 |
+|---|---|
+| 只设 `CX_GRAPHICS_BACKEND=dxvk` | ❌ 从视图解析到内置 dll |
+| 加 `CX_ACTIVE_GRAPHICS_BACKEND=dxvk` | ❌ 无效（已实测证伪） |
+| 把 DXVK 装进前缀 `system32` + native 覆盖 | ❌ 覆盖「生效」了，但加载的仍是被当成 native 的**视图内置 PE** |
+| **把 DXVK 的 dll 放进运行时视图** | ✅ **真正加载** |
+
+**判定方法（不要只看环境变量）**：
+
+```sh
+# 加载的 dll 的 inode 必须等于视图里那个文件
+f=$(lsof -p <游戏PID> | awk '$NF ~ /d3d11.dll$/ {print $NF}' | head -1)
+stat -f '%i %z' "$f" "$RUNTIME/lib/wine/x86_64-windows/d3d11.dll"
+# DXVK d3d11 ≈ 3165760 B；Wine 内置 ≈ 425552 B。DXVK 还会生成 d3d9.log
+```
+
+`prepare_runtime.py` 现在会把 `lib/dxvk/x86_64-windows/{d3d9,d3d10,d3d10_1,d3d10core,d3d11}.dll`
+materialize 进视图（CrossOver 的 DXVK 不含 `dxgi.dll`，故 dxgi 仍用 Wine 内置）。
+`launch_nikke.sh` 默认带上 native 覆盖：
+
+```
+WINEDLLOVERRIDES=version=n,b;d3d9,d3d10,d3d10_1,d3d10core,d3d11=n,b
+```
+
+> ⚠️ **写穿符号链接的坑（务必注意）。** 视图里 `lib/wine/i386-windows` 是**指回 CrossOver
+> 本体的符号链接**。对它下面的文件执行 `rm + cp` 会**直接改写 CrossOver 安装**
+> （本次就误伤过 32 位 d3d dll，已用前缀内置副本还原并验证 `codesign --verify` 通过）。
+> 要替换视图里的文件，先确认该目录不是指向 CrossOver 的链接。
+
+### 5.7 放开 DXGI 的失败根因：Wine 自己的 mfplat
+
+在**确认 DXVK 已真正加载**的前提下重测「放开两个 MF 开关」，结果：
+
+- 游戏**仍然卡死**在剧情处（日志冻结 90 秒以上、单核 103% CPU、GStreamer 管线堆积）。
+- Unity 仍报 `WindowsVideoMedia error 0x80004001`，上下文是 `Creating DXGIDeviceManager`。
+- 这次补丁是**关闭**的，所以 `E_NOTIMPL` 来自 **Wine 自身的 `MFCreateDXGIDeviceManager`**。
+
+**结论修正**：瓶颈不是 DXVK 的共享句柄（DXVK 确实实现了 `CreateSharedHandle`），
+而是 **Wine 的 mfplat 在这套环境下就无法提供 DXGI device manager**。
+因此两个 MF 开关的配对是**必需**的，与渲染后端无关。
+
+**最终推荐配置**：DXVK（性能）+ `NOP_BRIDGE_MF_NO_DXGI=1` + `NOP_BRIDGE_MF_SOFTWARE=1`（视频不卡死）。
+两者可以并存，实测剧情正常通过、CPU 62-96%（对比卡死时空转 103%）。
+
 ---
 
 ## 六、判定方法（结论怎么来的）

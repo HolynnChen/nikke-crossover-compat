@@ -35,6 +35,13 @@ NOP_BRIDGE_MF_NO_DXGI=${NOP_BRIDGE_MF_NO_DXGI-1}
 NOP_BRIDGE_MF_SOFTWARE=${NOP_BRIDGE_MF_SOFTWARE-1}
 CX_GRAPHICS_BACKEND=${CX_GRAPHICS_BACKEND:-dxvk}
 
+# The runtime view carries DXVK's d3d dlls as real files, and a native override is
+# what makes Wine pick them; without it the view's copies load as builtins and the
+# game silently falls back to wined3d (verified: much lower frame rate). Note the
+# view shadows the prefix, so installing DXVK into the prefix alone has no effect.
+export WINEARCH=${WINEARCH:-wow64}
+export WINEDLLOVERRIDES=${WINEDLLOVERRIDES:-"version=n,b;d3d9,d3d10,d3d10_1,d3d10core,d3d11=n,b"}
+
 exec env \
     CX_ROOT="/Applications/CrossOver.app/Contents/SharedSupport/CrossOver" \
     CX_GRAPHICS_BACKEND="$CX_GRAPHICS_BACKEND" \
@@ -47,9 +54,9 @@ exec env \
     NOP_BRIDGE_MF_SOFTWARE="$NOP_BRIDGE_MF_SOFTWARE" \
     NOP_BRIDGE_NTDLL="$RUNTIME/lib/wine/x86_64-unix/ntdll.so" \
     NOP_BRIDGE_PRIVILEGED=1 \
-    WINEARCH=wow64 \
+    WINEARCH="$WINEARCH" \
     WINEDEBUG="-all,err+all,warn+ntoskrnl" \
-    WINEDLLOVERRIDES="version=n,b" \
+    WINEDLLOVERRIDES="$WINEDLLOVERRIDES" \
     WINEDLLPATH="$RUNTIME/lib/wine/x86_64-windows:$RUNTIME/lib/wine/i386-windows:$RUNTIME/lib/wine" \
     WINELOADER="$LOADER" \
     WINEPREFIX="$PREFIX" \

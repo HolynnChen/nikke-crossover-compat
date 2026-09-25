@@ -261,6 +261,67 @@ lsof -p <game pid> | grep -iE "d3d11|dxgi" | awk '{print $NF}'
 `lib/wine/x86_64-windows/...` means it fell back to the builtin implementation.
 
 
+### 5.6 DXVK has to live in the runtime view (and the view shadows the prefix)
+
+**Background.** Wine's builtin wined3d is markedly slower than DXVK, which the user
+confirmed feels far smoother. Yet in this project's configuration
+`CX_GRAPHICS_BACKEND=dxvk` **had never actually taken effect**, for this reason.
+
+**The view shadows the prefix.** `WINEDLLPATH` points at `local/runtime-modules`,
+and Wine resolves the d3d dlls **from the view first**. Hence:
+
+| Attempt | Result |
+|---|---|
+| Only `CX_GRAPHICS_BACKEND=dxvk` | fails -- resolved from the view to the builtin dll |
+| Adding `CX_ACTIVE_GRAPHICS_BACKEND=dxvk` | no effect (measured, hypothesis disproven) |
+| Installing DXVK into the prefix `system32` plus a native override | the override "works", but loads the **view's builtin PE as if it were native** |
+| **Putting DXVK's dlls into the runtime view** | works -- genuinely loaded |
+
+**How to verify (do not trust the environment variable):**
+
+```sh
+# the loaded dll's inode must equal the view's file
+f=$(lsof -p <game pid> | awk '$NF ~ /d3d11.dll$/ {print $NF}' | head -1)
+stat -f '%i %z' "$f" "$RUNTIME/lib/wine/x86_64-windows/d3d11.dll"
+# DXVK d3d11 is about 3165760 bytes; Wine's builtin about 425552. DXVK also writes d3d9.log
+```
+
+`prepare_runtime.py` now materialises
+`lib/dxvk/x86_64-windows/{d3d9,d3d10,d3d10_1,d3d10core,d3d11}.dll` into the view
+(CrossOver's DXVK ships no `dxgi.dll`, so Wine's builtin dxgi stays), and
+`launch_nikke.sh` carries the native override by default:
+
+```
+WINEDLLOVERRIDES=version=n,b;d3d9,d3d10,d3d10_1,d3d10core,d3d11=n,b
+```
+
+> **Warning: writing through a symlink.** The view's `lib/wine/i386-windows` is a
+> **symlink back into CrossOver's own install**. Running `rm` plus `cp` on files
+> beneath it rewrites CrossOver itself (32-bit d3d dlls were damaged this way and
+> then restored from the prefix's builtin copies; `codesign --verify` passes again).
+> Check that a view directory is not such a link before replacing anything in it.
+
+### 5.7 Why opening the DXGI path fails: Wine's own mfplat
+
+Retested with **DXVK verified as genuinely loaded** and both MF switches cleared:
+
+- The game **still hangs on the story scene** (log frozen 90+ seconds, one core at
+  103% CPU, GStreamer pipelines piling up).
+- Unity still reports `WindowsVideoMedia error 0x80004001` with the context
+  `Creating DXGIDeviceManager`.
+- The patch was **off**, so the `E_NOTIMPL` comes from **Wine's own
+  `MFCreateDXGIDeviceManager`**.
+
+**Corrected conclusion.** The blocker is not DXVK's shared handles -- DXVK does
+implement `CreateSharedHandle` -- but that **Wine's mfplat cannot supply a DXGI
+device manager in this environment at all**. The MF switch pairing is therefore
+required regardless of the rendering backend.
+
+**Recommended configuration:** DXVK for performance plus
+`NOP_BRIDGE_MF_NO_DXGI=1` and `NOP_BRIDGE_MF_SOFTWARE=1` so video does not hang.
+The two coexist: measured, the story scene passes normally at 62-96% CPU, against
+103% spinning while hung.
+
 ---
 
 ## 6. How these conclusions were reached
