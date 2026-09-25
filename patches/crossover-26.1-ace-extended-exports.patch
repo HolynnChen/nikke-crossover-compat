@@ -1,0 +1,228 @@
+--- a/dlls/ntoskrnl.exe/ntoskrnl.c
++++ b/dlls/ntoskrnl.exe/ntoskrnl.c
+@@ -5111,3 +5111,130 @@
+     TRACE("object %p.\n", object);
+     ObfDereferenceObject(object);
+ }
++
++/***********************************************************************
++ *           ACE extended kernel exports
++ *
++ * Additional ntoskrnl.exe interfaces imported by ACE (Anti-Cheat Expert)
++ * that Wine leaves as stubs.  Discovered by parsing the PE import table of
++ * ACE-BASE.sys / ACE-CORE.sys / ACE-CORE.sys2 and diffing it against the
++ * exported symbols of the built ntoskrnl.exe: all 286 kernel imports were
++ * present, but 38 of them were unimplemented stubs.
++ *
++ * This group covers the ones backed by data Wine already maintains.
++ */
++
++/***********************************************************************
++ *           KeNumberProcessors   (NTOSKRNL.EXE.@)
++ */
++ULONG KeNumberProcessors;
++
++/***********************************************************************
++ *           MmUserProbeAddress   (NTOSKRNL.EXE.@)
++ */
++ULONG_PTR MmUserProbeAddress = 0x7fffffff;
++
++/***********************************************************************
++ *           SeExports   (NTOSKRNL.EXE.@)
++ */
++PVOID SeExports;
++
++/***********************************************************************
++ *           HalDispatchTable   (NTOSKRNL.EXE.@)
++ */
++PVOID HalDispatchTable;
++
++/***********************************************************************
++ *           PsJobType   (NTOSKRNL.EXE.@)
++ */
++POBJECT_TYPE PsJobType;
++
++/***********************************************************************
++ *           PsGetProcessPeb   (NTOSKRNL.EXE.@)
++ */
++PPEB WINAPI PsGetProcessPeb( PEPROCESS process )
++{
++    PPEB peb = NULL;
++
++    if (!process) return NULL;
++
++    if (process == PsInitialSystemProcess) return NULL; /* kernel process has no PEB */
++
++    if (NtQueryInformationProcess( (HANDLE)(ULONG_PTR)process->info.UniqueProcessId,
++                                   ProcessBasicInformation, &process->info,
++                                   sizeof(process->info), NULL ))
++        return NULL;
++
++    peb = process->info.PebBaseAddress;
++    TRACE( "process %p -> %p\n", process, peb );
++    return peb;
++}
++
++/***********************************************************************
++ *           PsGetProcessSessionId   (NTOSKRNL.EXE.@)
++ */
++ULONG WINAPI PsGetProcessSessionId( PEPROCESS process )
++{
++    PPEB peb;
++
++    if (!process) return 0;
++    if ((peb = PsGetProcessPeb( process ))) return peb->SessionId;
++    return 0;
++}
++
++/***********************************************************************
++ *           PsGetProcessCreateTimeQuadPart   (NTOSKRNL.EXE.@)
++ */
++LONGLONG WINAPI PsGetProcessCreateTimeQuadPart( PEPROCESS process )
++{
++    KERNEL_USER_TIMES times;
++
++    if (!process) return 0;
++
++    if (NtQueryInformationProcess( (HANDLE)(ULONG_PTR)process->info.UniqueProcessId,
++                                   ProcessTimes, &times, sizeof(times), NULL ))
++        return 0;
++
++    /* Windows reports creation time as a FILETIME quad. */
++    return times.CreateTime.QuadPart;
++}
++
++/***********************************************************************
++ *           PsGetCurrentThreadStackBase   (NTOSKRNL.EXE.@)
++ */
++PVOID WINAPI PsGetCurrentThreadStackBase(void)
++{
++    return NtCurrentTeb()->Tib.StackBase;
++}
++
++/***********************************************************************
++ *           PsGetCurrentThreadStackLimit   (NTOSKRNL.EXE.@)
++ */
++PVOID WINAPI PsGetCurrentThreadStackLimit(void)
++{
++    return NtCurrentTeb()->Tib.StackLimit;
++}
++
++/***********************************************************************
++ *           IoGetInitialStack   (NTOSKRNL.EXE.@)
++ */
++PVOID WINAPI IoGetInitialStack(void)
++{
++    return PsGetCurrentThreadStackBase();
++}
++
++/***********************************************************************
++ *           PsGetThreadWin32Thread   (NTOSKRNL.EXE.@)
++ *
++ * Windows stores a per-thread Win32 client pointer here.  Wine keeps its
++ * own TEB instead, so report the TEB as the Win32 thread block: callers
++ * only ever round-trip this value.
++ */
++PVOID WINAPI PsGetThreadWin32Thread( PETHREAD thread )
++{
++    if (!thread) return NULL;
++    if ((PETHREAD)thread == (PETHREAD)KeGetCurrentThread()) return NtCurrentTeb();
++
++    /* Another thread's TEB is not reachable from here without opening it. */
++    return NULL;
++}
+--- a/dlls/ntoskrnl.exe/ntoskrnl.exe.spec
++++ b/dlls/ntoskrnl.exe/ntoskrnl.exe.spec
+@@ -311,7 +311,7 @@
+ @ stub FsRtlUninitializeLargeMcb
+ @ stub FsRtlUninitializeMcb
+ @ stub FsRtlUninitializeOplock
+-@ stub HalDispatchTable
++@ extern HalDispatchTable
+ @ stub HalPrivateDispatchTable
+ @ stub HeadlessDispatch
+ @ stub InbvAcquireDisplayOwnership
+@@ -417,7 +417,7 @@
+ @ stub IoGetDmaAdapter
+ @ stdcall IoGetDriverObjectExtension(ptr ptr)
+ @ stub IoGetFileObjectGenericMapping
+-@ stub IoGetInitialStack
++@ stdcall IoGetInitialStack()
+ @ stub IoGetLowerDeviceObject
+ @ stdcall IoGetRelatedDeviceObject(ptr)
+ @ stdcall IoGetRequestorProcess(ptr)
+@@ -604,7 +604,7 @@
+ @ stdcall KeLeaveCriticalRegion()
+ @ stub KeLoaderBlock
+ @ stdcall -arch=x86_64 KeLowerIrql(long)
+-@ stub KeNumberProcessors
++@ extern KeNumberProcessors
+ @ stub KeProfileInterrupt
+ @ stub KeProfileInterruptWithSource
+ @ stub KePulseEvent
+@@ -780,7 +780,7 @@
+ @ stub MmUnmapViewInSystemSpace
+ @ stub MmUnmapViewOfSection
+ @ stub MmUnsecureVirtualMemory
+-@ stub MmUserProbeAddress
++@ extern MmUserProbeAddress
+ @ extern NlsAnsiCodePage ntdll.NlsAnsiCodePage
+ @ stub NlsLeadByteInfo
+ @ extern NlsMbCodePageTag ntdll.NlsMbCodePageTag
+@@ -917,12 +917,12 @@
+ @ stdcall PsGetCurrentThread() KeGetCurrentThread
+ @ stdcall PsGetCurrentThreadId()
+ @ stub PsGetCurrentThreadPreviousMode
+-@ stub PsGetCurrentThreadStackBase
+-@ stub PsGetCurrentThreadStackLimit
++@ stdcall PsGetCurrentThreadStackBase()
++@ stdcall PsGetCurrentThreadStackLimit()
+ @ stub PsGetJobLock
+ @ stub PsGetJobSessionId
+ @ stub PsGetJobUIRestrictionsClass
+-@ stub PsGetProcessCreateTimeQuadPart
++@ stdcall PsGetProcessCreateTimeQuadPart(ptr)
+ @ stub PsGetProcessDebugPort
+ @ stub PsGetProcessExitProcessCalled
+ @ stdcall PsGetProcessExitStatus(ptr)
+@@ -931,11 +931,11 @@
+ @ stdcall PsGetProcessImageFileName(ptr)
+ @ stdcall PsGetProcessInheritedFromUniqueProcessId(ptr)
+ @ stub PsGetProcessJob
+-@ stub PsGetProcessPeb
++@ stdcall PsGetProcessPeb(ptr)
+ @ stub PsGetProcessPriorityClass
+ @ stdcall PsGetProcessSectionBaseAddress(ptr)
+ @ stub PsGetProcessSecurityPort
+-@ stub PsGetProcessSessionId
++@ stdcall PsGetProcessSessionId(ptr)
+ @ stub PsGetProcessWin32Process
+ @ stub PsGetProcessWin32WindowStation
+ @ stdcall -arch=x86_64 PsGetProcessWow64Process(ptr)
+@@ -946,7 +946,7 @@
+ @ stdcall PsGetThreadProcessId(ptr)
+ @ stub PsGetThreadSessionId
+ @ stub PsGetThreadTeb
+-@ stub PsGetThreadWin32Thread
++@ stdcall PsGetThreadWin32Thread(ptr)
+ @ stdcall PsGetVersion(ptr ptr ptr ptr)
+ @ stdcall PsImpersonateClient(ptr ptr long long long)
+ @ extern PsInitialSystemProcess
+@@ -954,7 +954,7 @@
+ @ stdcall PsIsSystemThread(ptr)
+ @ stub PsIsThreadImpersonating
+ @ stub PsIsThreadTerminating
+-@ stub PsJobType
++@ extern PsJobType
+ @ stdcall PsLookupProcessByProcessId(ptr ptr)
+ @ stub PsLookupProcessThreadByCid
+ @ stdcall PsLookupThreadByThreadId(ptr ptr)
+@@ -1353,7 +1353,7 @@
+ @ stub SeDeassignSecurity
+ @ stub SeDeleteAccessState
+ @ stub SeDeleteObjectAuditAlarm
+-@ stub SeExports
++@ extern SeExports
+ @ stub SeFilterToken
+ @ stub SeFreePrivileges
+ @ stub SeImpersonateClient

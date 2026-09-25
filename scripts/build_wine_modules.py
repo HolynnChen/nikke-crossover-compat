@@ -16,6 +16,7 @@ PATCHES = ("crossover-26.1-kernel.patch",
            "crossover-26.1-thread-process-experimental.patch",
            "crossover-26.1-september-update.patch",
            "crossover-26.1-ace-kernel-exports.patch",
+           "crossover-26.1-ace-extended-exports.patch",
            "crossover-26.1-mf-software.patch")
 MODULES = {"ntoskrnl.exe": "dlls/ntoskrnl.exe", "mfreadwrite.dll": "dlls/mfreadwrite",
            "mfplat.dll": "dlls/mfplat", "lsass.exe": "programs/lsass"}
