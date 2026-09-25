@@ -250,21 +250,25 @@ the evidence does not settle the question.
 
 ## 8. Reproducing
 
-**`MF_SOFTWARE` has to be included**, or story video hangs (5.3). The
-repository's own launcher entry already supports both switches:
+**`MF_SOFTWARE` has to be included**, or story video hangs (5.3).
 
+For daily use, launch through `scripts/launch_nikke.sh`. It **reproduces the app
+bundle's own environment** (`WINELOADER`/`CX_WINELOADER` point at the bundle's
+bootstrap) and adds only `NOP_BRIDGE_MF_SOFTWARE=1`. That avoids editing the
+app's `Info.plist` -- it is ad-hoc signed, so editing it invalidates the
+signature -- and adds no extra layer.
 
-An equivalent wrapper is provided as `scripts/launch_nikke.sh` for daily use.
-```sh
-# launch with the video switches (no app-bundle signature involved)
-python3 scripts/launch_crossover.py \
-    --prefix "$HOME/Library/Application Support/NIKKE-Wine" \
-    --runtime local/runtime-modules \
-    --graphics dxvk --privileged-faults \
-    --software-video --disable-dxgi-video \
-    --workdir 'C:\\NIKKE\\Launcher' \
-    'C:\\NIKKE\\Launcher\\nikke_launcher.exe'
-```
+> **Why not `scripts/launch_crossover.py`.** It invokes CrossOver's own `bin/wine`
+> wrapper, which is an **extra dependency layer**; the original app deliberately
+> bypasses it by using its own bootstrap as the loader. On this machine that path
+> brought up only a `wineserver` and never started the launcher, so this entry
+> point launches the bootstrap directly instead. For what it is worth, `bin/wine`
+> is a Perl script containing **no licence or expiry checks**; both routes depend
+> on CrossOver.app being installed either way, because the runtime view's files
+> are symlinks into it.
+
+The equivalent graphical entry is `~/Applications/NIKKE Wine (video fix).app`, a
+**newly created** wrapper app; the original `NIKKE Wine.app` is untouched.
 
 ```sh
 # 1. Build the five modules (ntdll.so is forced to x86_64, hashes printed)

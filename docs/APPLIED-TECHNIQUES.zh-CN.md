@@ -233,20 +233,22 @@ reader 明确不取 D3D manager、产出系统内存样本，与 Unity 的软件
 ## 八、复现
 
 **注意 `MF_SOFTWARE` 必须带上**，否则剧情播片会卡死（5.3）。
-仓库自带的启动入口已经支持这两个开关：
 
+日常启动用 `scripts/launch_nikke.sh`：它**复刻 app bundle 自己的那套环境**
+（`WINELOADER`/`CX_WINELOADER` 指向 app 自带的 bootstrap），只多出
+`NOP_BRIDGE_MF_SOFTWARE=1`。这样既不必改 app 的 `Info.plist`（它是 adhoc 签名的，
+改了签名就失效），也不引入额外一层。
 
-仓库里也备好了等价的封装脚本 `scripts/launch_nikke.sh`，日常直接用那个即可。
-```sh
-# 带齐视频开关的启动方式（不涉及 app bundle 签名）
-python3 scripts/launch_crossover.py \
-    --prefix "$HOME/Library/Application Support/NIKKE-Wine" \
-    --runtime local/runtime-modules \
-    --graphics dxvk --privileged-faults \
-    --software-video --disable-dxgi-video \
-    --workdir 'C:\\NIKKE\\Launcher' \
-    'C:\\NIKKE\\Launcher\\nikke_launcher.exe'
-```
+> **为什么不走 `scripts/launch_crossover.py`。** 它内部调用 CrossOver 自己的
+> `bin/wine` 包装脚本，那是一条**额外的依赖层**——原 app 正是刻意绕开它、
+> 直接用自己的 bootstrap 当 loader 的。本机实测这条路径只拉起了 `wineserver`、
+> 启动器始终没出现，因此改用 bootstrap 直启。
+> （附带查明：`bin/wine` 是 Perl 脚本，其中**不含任何许可或过期检查逻辑**；
+> 但两条路都同样依赖 CrossOver.app 处于已安装状态，
+> 因为运行时视图里的文件是符号链接指向它的。）
+
+等价的图形入口是 `~/Applications/NIKKE Wine (video fix).app`——一个**新建的**包装
+app，原 `NIKKE Wine.app` 完全未被改动。
 
 ```sh
 # 1. 构建 5 个模块（含 ntdll.so，会强制 x86_64 并打印哈希）

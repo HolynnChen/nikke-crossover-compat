@@ -107,6 +107,10 @@ def main():
             'lib/wine/x86_64-windows', 'lib/wine/i386-windows', 'lib/wine')),
         'CX_GRAPHICS_BACKEND': 'dxvk', 'WINEDLLOVERRIDES': 'version=n,b',
         'NOP_BRIDGE_PRIVILEGED': '1', 'NOP_BRIDGE_MF_NO_DXGI': '1',
+        # NO_DXGI on its own is a half-configured state: Unity falls back to
+        # software while the reader still expects D3D frames, and story video
+        # then stalls the game. The two switches must travel together.
+        'NOP_BRIDGE_MF_SOFTWARE': '1',
         'WINEDEBUG': '-all,err+all,warn+ntoskrnl,fixme+ntoskrnl,warn+mfplat',
     }
     source_env.update(source_info.get('LSEnvironment', {}))
