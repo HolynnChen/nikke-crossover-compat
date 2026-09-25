@@ -52,7 +52,7 @@ Bison 默认路径为 `/opt/homebrew/opt/bison/bin/bison`，
 ```
 仓库      ~/work/nikke-crossover-compat
 Wine 前缀 ~/Library/Application Support/NIKKE-Wine
-构建产物  <仓库>/local/runtime-0.2.0
+构建产物  <仓库>/local/runtime-modules
 启动入口  ~/Applications/NIKKE Wine.app
 ```
 
@@ -133,7 +133,7 @@ python3 scripts/build_wine_modules.py \
 
 ```sh
 python3 scripts/prepare_runtime.py \
-    --output local/runtime-0.2.0 \
+    --output local/runtime-modules \
     --modules local/wine-modules-0.2.0/build
 ```
 
@@ -143,31 +143,43 @@ python3 scripts/prepare_runtime.py \
 
 ### 4.1 方式 A：安装到已有前缀（推荐）
 
-如果已经有一个装好 NIKKE 的前缀，只替换兼容层模块：
+如果已经有一个装好 NIKKE 的前缀，只替换兼容层模块。
+
+共替换 **5 个文件**：4 个 PE 模块在 `x86_64-windows/`，1 个 `ntdll.so` 在
+`x86_64-unix/`。清单与证据见 [真正在用的技术](APPLIED-TECHNIQUES.zh-CN.md)。
 
 ```sh
 PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
-RUNTIME="$PWD/local/runtime-0.2.0"
+RUNTIME="$PWD/local/runtime-modules"
 
 # 备份原文件
 mkdir -p /tmp/nikke-compat-backup
-for f in ntoskrnl.exe lsass.exe; do
+for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
   cp "$PREFIX/drive_c/windows/system32/$f" /tmp/nikke-compat-backup/ 2>/dev/null
 done
 
-# 安装新模块
-cp "$RUNTIME/lib/wine/x86_64-windows/ntoskrnl.exe" \
-   "$PREFIX/drive_c/windows/system32/"
-cp "$RUNTIME/lib/wine/x86_64-windows/lsass.exe" \
-   "$PREFIX/drive_c/windows/system32/"
+# 安装 4 个 PE 模块
+for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
+  cp "$RUNTIME/lib/wine/x86_64-windows/$f" "$PREFIX/drive_c/windows/system32/"
+done
 ```
+
+**`ntdll.so` 不需要拷进前缀。** 它由 app 的 `NOP_BRIDGE_NTDLL` 指向运行时视图
+生效，所以只需保证这两点：
+
+1. `local/runtime-modules/lib/wine/x86_64-unix/ntdll.so` 是打过补丁的那份；
+2. 同一目录层级下 `lib/wine/x86_64-windows/ntdll.dll` **必须同时存在**。
+
+第 2 条容易踩坑：`ntdll` 是 Unix/PE 成对的，只覆盖 `.so` 而缺了 PE 的 `.dll`
+会直接以 `error c0000135` 启动失败。用 `prepare_runtime.py` 生成视图就不会漏
+（脚本会从 CrossOver 原样拷入那份未修改的 `ntdll.dll`）。
 
 ### 4.2 方式 B：创建独立容器
 
 ```sh
 python3 scripts/install_crossover_entry.py \
     --source-prefix "$HOME/Library/Application Support/CrossOver/Bottles/YOUR_NIKKE_BOTTLE" \
-    --source-runtime local/runtime-0.2.0 \
+    --source-runtime local/runtime-modules \
     --source-app build/NopBridgeLab.app \
     --source-bridge build/libnop_bridge.dylib \
     --bottle-name NIKKE-Compatibility-152 \
@@ -185,17 +197,25 @@ python3 scripts/install_crossover_entry.py \
 ### 5.1 核对模块哈希
 
 ```sh
-PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
-md5 -q "$PREFIX/drive_c/windows/system32/ntoskrnl.exe"
-md5 -q "$PREFIX/drive_c/windows/system32/lsass.exe"
+RUNTIME="$PWD/local/runtime-modules"
+for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
+  md5 -q "$RUNTIME/lib/wine/x86_64-windows/$f"
+done
+md5 -q "$RUNTIME/lib/wine/x86_64-unix/ntdll.so"
 ```
 
-本机验证值（0.2.0）：
+本机验证值（0.4.0）：
 
 ```
-ntoskrnl.exe  019181abcb3eae2ac386da83df26afe0
-lsass.exe     3410c261f87e9d36ba1614d883b9e824
+ntoskrnl.exe     553a755df4792272d091168c7a4ac189
+mfplat.dll       9e05b449b0042c1828db913def2a1bcc
+mfreadwrite.dll  1d3509c2e55d5581fc2e26426b1fe440
+lsass.exe        3410c261f87e9d36ba1614d883b9e824
+ntdll.so         ae6489f07e27c0ddbf541d2db82446c9   （必须是 x86_64）
 ```
+
+> `ntdll.so` **必须**是 `x86_64`。本机默认编译出来是 `arm64`，装上去会在
+> bootstrap 阶段以一句难懂的架构错误失败。用 `lipo -archs` 确认。
 
 ### 5.2 确认 ACE 接口已导出
 
@@ -219,7 +239,7 @@ PsGetCurrentThreadTeb
 ```sh
 python3 scripts/test_wine_modules.py \
     --prefix "$PREFIX" \
-    --runtime local/runtime-0.2.0
+    --runtime local/runtime-modules
 ```
 
 ---
@@ -327,11 +347,11 @@ python3 scripts/build_wine_modules.py \
     --output local/wine-modules-0.2.0
 
 python3 scripts/prepare_runtime.py \
-    --output local/runtime-0.2.0 \
+    --output local/runtime-modules \
     --modules local/wine-modules-0.2.0/build
 
 PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
-RUNTIME="$PWD/local/runtime-0.2.0"
+RUNTIME="$PWD/local/runtime-modules"
 cp "$RUNTIME/lib/wine/x86_64-windows/"{ntoskrnl.exe,lsass.exe} \
    "$PREFIX/drive_c/windows/system32/"
 ```

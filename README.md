@@ -2,7 +2,7 @@
 
 **让《胜利女神：NIKKE》Windows PC 版在 Apple Silicon Mac 上通过 CrossOver 运行。**
 
-[English](README.en.md) · [安装指南](docs/INSTALL.zh-CN.md) · [验证记录](docs/VALIDATION.md) · [技术设计](docs/ARCHITECTURE.md)
+[English](README.en.md) · [安装指南](docs/INSTALL.zh-CN.md) · [真正在用的技术](docs/APPLIED-TECHNIQUES.zh-CN.md) · [验证记录](docs/VALIDATION.md) · [技术设计](docs/ARCHITECTURE.md)
 
 这是面向 NIKKE 的实验性兼容补丁。它针对本次测试中遇到的启动异常、部分 Wine 接口缺失和背景视频黑屏问题，并提供固定在 CrossOver 中的启动入口。
 
@@ -38,6 +38,8 @@
 
 ## 安装
 
+**当前运行时究竟替换了哪 5 个文件、各自证据是什么，见 [真正在用的技术](docs/APPLIED-TECHNIQUES.zh-CN.md)。**
+
 **完整步骤见 [安装指南](docs/INSTALL.zh-CN.md)。** 下面是概要。
 
 以下命令在本仓库根目录执行。先完全退出源容器里的游戏、启动器和后台进程。
@@ -59,7 +61,7 @@ python3 scripts/build_wine_modules.py \
     --output local/wine-modules-0.2.0
 
 python3 scripts/prepare_runtime.py \
-    --output local/runtime-0.2.0 \
+    --output local/runtime-modules \
     --modules local/wine-modules-0.2.0/build
 ```
 
@@ -72,7 +74,7 @@ python3 scripts/prepare_runtime.py \
 ```sh
 python3 scripts/install_crossover_entry.py \
     --source-prefix "$HOME/Library/Application Support/CrossOver/Bottles/YOUR_NIKKE_BOTTLE" \
-    --source-runtime local/runtime-0.2.0 \
+    --source-runtime local/runtime-modules \
     --source-app build/NopBridgeLab.app \
     --source-bridge build/libnop_bridge.dylib
 ```
@@ -88,7 +90,7 @@ GitHub 源码更新不会自动替换本机运行时。退出旧容器后，按�
 ```sh
 python3 scripts/install_crossover_entry.py \
     --source-prefix "$HOME/Library/Application Support/CrossOver/Bottles/YOUR_NIKKE_BOTTLE" \
-    --source-runtime local/runtime-0.2.0 \
+    --source-runtime local/runtime-modules \
     --source-app build/NopBridgeLab.app \
     --source-bridge build/libnop_bridge.dylib \
     --bottle-name NIKKE-Compatibility-152 \
@@ -129,10 +131,10 @@ Windows/Wine 接口测试需要独立、可丢弃的测试容器：
 
 ```sh
 python3 scripts/test_windows.py --prefix /absolute/path/to/test-bottle \
-    --runtime local/runtime-0.2.0
+    --runtime local/runtime-modules
 python3 scripts/test_wine_modules.py \
     --prefix /absolute/path/to/test-bottle \
-    --runtime local/runtime-0.2.0
+    --runtime local/runtime-modules
 ```
 
 上述测试默认包含线程所属进程、真实退出状态、线程上下文及映射生命周期。发布纯源码包：

@@ -45,7 +45,7 @@ Bison defaults to `/opt/homebrew/opt/bison/bin/bison`; override with `--bison`.
 ```
 repo        ~/work/nikke-crossover-compat
 Wine prefix ~/Library/Application Support/NIKKE-Wine
-build       <repo>/local/runtime-0.2.0
+build       <repo>/local/runtime-modules
 launcher    ~/Applications/NIKKE Wine.app
 ```
 
@@ -127,7 +127,7 @@ build on mismatch.
 
 ```sh
 python3 scripts/prepare_runtime.py \
-    --output local/runtime-0.2.0 \
+    --output local/runtime-modules \
     --modules local/wine-modules-0.2.0/build
 ```
 
@@ -139,28 +139,40 @@ python3 scripts/prepare_runtime.py \
 
 Replace only the compatibility modules:
 
+**Five files** are replaced: four under `x86_64-windows/`, one under
+`x86_64-unix/`. See [what is actually applied](APPLIED-TECHNIQUES.en.md) for
+the list and the evidence.
+
 ```sh
 PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
-RUNTIME="$PWD/local/runtime-0.2.0"
+RUNTIME="$PWD/local/runtime-modules"
 
 # back up the originals
 mkdir -p /tmp/nikke-compat-backup
-for f in ntoskrnl.exe lsass.exe; do
+for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
   cp "$PREFIX/drive_c/windows/system32/$f" /tmp/nikke-compat-backup/ 2>/dev/null
 done
 
-cp "$RUNTIME/lib/wine/x86_64-windows/ntoskrnl.exe" \
-   "$PREFIX/drive_c/windows/system32/"
-cp "$RUNTIME/lib/wine/x86_64-windows/lsass.exe" \
-   "$PREFIX/drive_c/windows/system32/"
+for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
+  cp "$RUNTIME/lib/wine/x86_64-windows/$f" "$PREFIX/drive_c/windows/system32/"
+done
 ```
+
+> The Unix-side `ntdll.so` (user-mode Rosetta NOP emulation) reaches Wine
+> through the app's `NOP_BRIDGE_NTDLL`, which points at the runtime view, so it
+> does **not** need copying into the prefix. Two things must hold:
+> `local/runtime-modules/lib/wine/x86_64-unix/ntdll.so` is the patched one, and
+> `lib/wine/x86_64-windows/ntdll.dll` **exists alongside it**. ntdll is a
+> Unix/PE pair; overlaying the `.so` without the PE `.dll` fails to start with
+> `error c0000135`. Generating the view with `prepare_runtime.py` cannot miss
+> this, because the script copies that unmodified `ntdll.dll` in from CrossOver.
 
 ### 4.2 Option B — separate bottle
 
 ```sh
 python3 scripts/install_crossover_entry.py \
     --source-prefix "$HOME/Library/Application Support/CrossOver/Bottles/YOUR_NIKKE_BOTTLE" \
-    --source-runtime local/runtime-0.2.0 \
+    --source-runtime local/runtime-modules \
     --source-app build/NopBridgeLab.app \
     --source-bridge build/libnop_bridge.dylib \
     --bottle-name NIKKE-Compatibility-152 \
@@ -178,17 +190,26 @@ untouched, and never overwrites an existing target.
 ### 5.1 Check module hashes
 
 ```sh
-PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
-md5 -q "$PREFIX/drive_c/windows/system32/ntoskrnl.exe"
-md5 -q "$PREFIX/drive_c/windows/system32/lsass.exe"
+RUNTIME="$PWD/local/runtime-modules"
+for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
+  md5 -q "$RUNTIME/lib/wine/x86_64-windows/$f"
+done
+md5 -q "$RUNTIME/lib/wine/x86_64-unix/ntdll.so"
 ```
 
-Reference values (0.2.0):
+Reference values (0.4.0):
 
 ```
-ntoskrnl.exe  019181abcb3eae2ac386da83df26afe0
-lsass.exe     3410c261f87e9d36ba1614d883b9e824
+ntoskrnl.exe     553a755df4792272d091168c7a4ac189
+mfplat.dll       9e05b449b0042c1828db913def2a1bcc
+mfreadwrite.dll  1d3509c2e55d5581fc2e26426b1fe440
+lsass.exe        3410c261f87e9d36ba1614d883b9e824
+ntdll.so         ae6489f07e27c0ddbf541d2db82446c9   (must be x86_64)
 ```
+
+> `ntdll.so` **must** be `x86_64`. The host-default build produces `arm64`,
+> which fails in the bootstrap with an obscure architecture error. Check it
+> with `lipo -archs`.
 
 ### 5.2 Confirm the ACE exports are present
 
@@ -212,7 +233,7 @@ A missing `KeAcquireGuardedMutex` makes ACE report
 ```sh
 python3 scripts/test_wine_modules.py \
     --prefix "$PREFIX" \
-    --runtime local/runtime-0.2.0
+    --runtime local/runtime-modules
 ```
 
 ---
@@ -319,11 +340,11 @@ python3 scripts/build_wine_modules.py \
     --output local/wine-modules-0.2.0
 
 python3 scripts/prepare_runtime.py \
-    --output local/runtime-0.2.0 \
+    --output local/runtime-modules \
     --modules local/wine-modules-0.2.0/build
 
 PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
-RUNTIME="$PWD/local/runtime-0.2.0"
+RUNTIME="$PWD/local/runtime-modules"
 cp "$RUNTIME/lib/wine/x86_64-windows/"{ntoskrnl.exe,lsass.exe} \
    "$PREFIX/drive_c/windows/system32/"
 ```

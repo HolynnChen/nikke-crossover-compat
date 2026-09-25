@@ -1,0 +1,222 @@
+# The working solution: what is actually applied
+
+This file answers one question: **which techniques does the runtime that
+currently launches the game actually use?** Every claim comes from measuring
+the installed runtime, not from restating the design. The method is in
+section 6 so each claim can be reproduced.
+
+---
+
+## 1. Summary
+
+The runtime view holds 840 entries: **828 symlinks** into the installed
+CrossOver (unmodified) and **7 real files**. Of those seven, **five are
+replaced**:
+
+```
+lib/wine/x86_64-windows/ntoskrnl.exe      <- replaced (customized)
+lib/wine/x86_64-windows/mfplat.dll        <- replaced (customized)
+lib/wine/x86_64-windows/mfreadwrite.dll   <- replaced (customized)
+lib/wine/x86_64-windows/lsass.exe         <- replaced (customized)
+lib/wine/x86_64-unix/ntdll.so             <- replaced (customized)
+lib/wine/x86_64-windows/ntdll.dll         <- must be present, content unchanged (5.2)
+LOCAL_ONLY.txt                            <- notes
+```
+
+Add one macOS-side dylib and one locally built bootstrap, and that is the
+whole thing.
+
+---
+
+## 2. The five replaced files
+
+| File | md5 | Produced by | Required? |
+|---|---|---|---|
+| `x86_64-windows/ntoskrnl.exe` | `553a755df4792272d091168c7a4ac189` | 7 kernel patches | **yes, proven** |
+| `x86_64-unix/ntdll.so` | `ae6489f07e27c0ddbf541d2db82446c9` | `rosetta-multibyte-nop` | in use (necessity not isolated) |
+| `x86_64-windows/mfplat.dll` | `9e05b449b0042c1828db913def2a1bcc` | `mf-software` | in use |
+| `x86_64-windows/mfreadwrite.dll` | `1d3509c2e55d5581fc2e26426b1fe440` | `mf-software` | in use |
+| `x86_64-windows/lsass.exe` | `3410c261f87e9d36ba1614d883b9e824` | `src/lsass.c` | in use (RunServices entry) |
+
+**`ntoskrnl.exe` is the only file proven to be load-bearing.** Before the
+kernel-mode Rosetta NOP patch, the ACE dialog appeared every time and
+`ACE-CORE102797` sat at `STOPPED` (`error 31`); only after the patch did it
+become `RUNNING` and the dialog disappear.
+
+---
+
+## 3. What the nine patches do
+
+The order cannot be permuted — each patch is generated against the file as the
+previous ones left it.
+
+| # | Patch | Files | Effect | Lands in |
+|---|---|---|---|---|
+| 1 | `kernel` | `sync.c` `ntoskrnl.c` `ntoskrnl_private.h` `*.spec` | Kernel infrastructure: synchronization, object-name lifetime, callback-list ownership, caller-owned memory-range arrays | ntoskrnl.exe |
+| 2 | `thread-process-experimental` | `ntoskrnl.c` `*.spec` | Thread/process ownership | ntoskrnl.exe |
+| 3 | `september-update` | `instr.c` `ntoskrnl.c` `*.spec` `*_private.h` | September upstream sync + kernel-mode RIP conversion | ntoskrnl.exe |
+| 4 | `ace-kernel-exports` | `sync.c` `ntoskrnl.c` `*.spec` | Kernel exports ACE needs (first batch) | ntoskrnl.exe |
+| 5 | `ace-extended-exports` | `ntoskrnl.c` `*.spec` | Kernel exports ACE needs (second batch) | ntoskrnl.exe |
+| 6 | `ace-core-driver-stubs` | `ntoskrnl.c` `*.spec` | The ten stubs ACE's CORE drivers import | ntoskrnl.exe |
+| 7 | **`ntoskrnl-rosetta-nop`** | `instr.c` | **Kernel-mode multi-byte NOP decode + handling `EXCEPTION_ILLEGAL_INSTRUCTION`** | ntoskrnl.exe |
+| 8 | `rosetta-multibyte-nop` | `ntdll/unix/signal_x86_64.c` | User-mode `handle_rosetta_nop()` | **ntdll.so** |
+| 9 | `mf-software` | `mfreadwrite/reader.c` `mfplat/main.c` | Media Foundation software fallback (a DXGI shared-handle capability query fails honestly instead of faking success) | mfplat.dll, mfreadwrite.dll |
+
+Patch 7 is the core of this fix. Patches 1–6 and 9 predate 0.4.0.
+
+---
+
+## 4. What is active on the macOS side
+
+From `LSEnvironment` in `NIKKE Wine.app/Contents/Info.plist`. This part is
+**unchanged**, per the standing constraint to leave it alone.
+
+| Variable | Effect |
+|---|---|
+| `DYLD_INSERT_LIBRARIES` | Injects `libnop_bridge.dylib` (`src/bridge.c` + `nop_decode.h` + `priv_decode.h`) |
+| `NOP_BRIDGE_PRIVILEGED=1` | Enables the `priv_decode` path: recasts a `MOV CR*` trap 6 as trap 13 |
+| `NOP_BRIDGE_NTDLL` | Points at `runtime-modules/.../x86_64-unix/ntdll.so` (row 2 above) |
+| `NOP_BRIDGE_MF_NO_DXGI=1` | Enables the NO_DXGI branch of `mf-software` |
+| `NOP_BRIDGE_APP_PROGRAM/CWD` | Names the hosted program and its working directory |
+| `NOP_BRIDGE_LOG` | Where the bridge writes |
+| `CX_GRAPHICS_BACKEND=dxvk` | **DXVK is the backend, not CrossOver's DXMT/Metal** — this decides section 5.1 |
+| `WINEDLLPATH` | Points at the runtime view's `lib/wine/{x86_64-windows,i386-windows}` |
+| `WINEDLLOVERRIDES=version=n,b` | Native-first for the version DLL |
+| `WINEARCH=wow64` | Prefix architecture |
+| `WINE(L)OADER` / `WINESERVER` / `CX_ROOT` / `WINEPREFIX` | Launch and container resolution |
+
+**`NOP_BRIDGE_TRACE` is not set**, so the bridge prints nothing even when it
+hits. A count of zero `[nop-bridge] emulated register NOP` lines in
+`NOP_BRIDGE_LOG` is *not* evidence that the bridge never fired.
+
+---
+
+## 5. What this round removed
+
+### 5.1 Deleted `x86_64-unix/winemetal.so` (24 MB)
+
+Three independent pieces of evidence that it was dead weight:
+
+1. **It is not the graphics backend.** The app sets
+   `CX_GRAPHICS_BACKEND=dxvk`, and the runtime log confirms DXVK loaded
+   (`DXVK: cxaddon-1.10.3-1-25-g737aacd`).
+2. **No PE module imports it.** Scanning import tables across
+   `lib/wine/x86_64-windows/` and `lib/dxmt/x86_64-windows/`: `winemetal.dll`
+   is imported by exactly three DLLs, `d3d11.dll`, `dxgi.dll` and
+   `nvapi64.dll`, all under `lib/dxmt/` — and **zero** under `lib/wine/`.
+   DXMT is not selected, so none of those load.
+3. **No script produces it.** `winemetal` appears 0 times in
+   `prepare_runtime.py`, and `lib/dxmt` is already present as a symlink. This
+   24 MB file is byte-identical to
+   `CrossOver/lib/dxmt/x86_64-unix/winemetal.so`
+   (`548cb7eeb4dbd993f193fa02226a6019`) — a manual, redundant copy.
+
+The runtime view dropped from 30 MB to 6.9 MB and the smoke test passed
+(`RUNTIME_OK`).
+
+> If the backend is ever switched back to `CX_GRAPHICS_BACKEND=dxmt`, this
+> `.so` has to be restored.
+
+### 5.2 The PE `ntdll.dll` has to be there (a near miss)
+
+It is byte-identical to CrossOver's original
+(`28f9240613d2472d1091530bebf969a6`), so I first judged it a pointless copy and
+deleted it. **The runtime then refused to start:**
+
+```
+wine: failed to load .../local/runtime-modules/lib/wine/x86_64-unix/ntdll.dll
+error c0000135
+```
+
+`c0000135` is `STATUS_DLL_NOT_FOUND`. The reason is that **ntdll is a pair**:
+the Unix `.so` and the PE `.dll` must sit together. Since our `.so` is overlaid,
+the PE `.dll` has to be overlaid with it, or loading fails outright.
+
+So the corrected conclusion is: **this `ntdll.dll` is required; only its
+content needs no change.**
+
+**It is still deliberately not swapped for a locally built one:** this
+repository builds from upstream Wine sources, while CrossOver's `ntdll.dll`
+carries CodeWeavers' own patches, so replacing it would lose functionality. The
+script now copies it from CrossOver verbatim and says why in a comment.
+
+> One more trap fixed along the way: `prepare_runtime.py` only turned
+> `x86_64-windows` from a symlink into a real directory inside the
+> `if modules:` branch. Copying `ntdll.dll` before that point would have written
+> **through the symlink into the installed CrossOver directory**. The script now
+> materializes that directory unconditionally before copying anything in;
+> CrossOver's mtime and md5 were checked before and after and are unchanged.
+
+---
+
+## 6. How these conclusions were reached
+
+None of this was inferred by reading code; each claim comes from:
+
+1. **Comparing the installed runtime against CrossOver's originals.** Walk the
+   runtime view, use `find -type f` to isolate every non-symlink real file, and
+   compare each against the same-named file under
+   `/Applications/CrossOver.app/.../CrossOver/`. Identical means "just a copy",
+   different means "genuinely customized". This produced the five files in
+   section 2 directly.
+2. **Scanning import tables in both ASCII and UTF-16.** This step nearly led me
+   to a wrong conclusion: searching `UnityPlayer.dll` for `mfplat` as ASCII
+   yields **0** hits, which looks like "the game does not use Media
+   Foundation". Searching **UTF-16LE** instead finds `mfplat.dll` and
+   `mfreadwrite.dll`. Unity loads them by name in UTF-16, so both modules
+   **really are on the path** — corroborated by `MFStartup`,
+   `MFCreateSourceReader` and `IMFSourceReader` strings in the same binary.
+   **Any "this DLL is unused" claim must check both encodings.**
+3. **Reverse-looking-up open handles.** `lsof +D <prefix>` finds the files
+   processes actually hold, which is far more reliable than matching process
+   names with `ps` — Wine writes titles like `-timestamps` that reveal nothing.
+4. **Rebuild, compare, and actually boot it.** Regenerate a runtime view with
+   `prepare_runtime.py` and confirm its file list is **md5-identical** to the
+   hand-installed set. But **hashes alone are not enough**: an earlier version
+   of the script produced a view whose hashes all matched yet which could not
+   start at all, because one `ntdll.dll` was missing. The final criterion is
+   therefore to **boot the new view**:
+
+   ```sh
+   NOP_BRIDGE_NTDLL=/tmp/rt-new/lib/wine/x86_64-unix/ntdll.so \
+     "$HOME/Applications/NIKKE Wine.app/Contents/MacOS/nikke_wine" \
+     "C:\\windows\\system32\\cmd.exe" /c "echo OK"
+   ```
+
+---
+
+## 7. Kept, though redundant or unverified
+
+These were **not** removed: deleting them carries more risk than benefit, or
+the evidence does not settle the question.
+
+| Item | Status |
+|---|---|
+| The user-mode `ntdll.so` patch | Covers **the same encoding** as the macOS-side `nop_bridge` (`src/nop_decode.h`). ACE still failed while the bridge was active, so the bridge does not cover the kernel path — but each one's contribution *inside the game process* has not been isolated |
+| `NOP_BRIDGE_MF_SOFTWARE` | **Not set**, while `NOP_BRIDGE_MF_NO_DXGI` is. The two are meant to travel together, so the current state is inconsistent. The game reaches the lobby, so this was left alone |
+| `crossover-26.1-thread-process-experimental.patch` | Only 28 lines; `ARCHITECTURE.md` notes its implementation is now part of the default build. The file is kept for provenance |
+| `ACE-CORE202797` | Still `STOPPED` (`sc start` returns `87 ERROR_INVALID_PARAMETER`). **Does not block the game** |
+
+---
+
+## 8. Reproducing
+
+```sh
+# 1. Build the five modules (ntdll.so is forced to x86_64, hashes printed)
+python3 scripts/build_wine_modules.py
+
+# 2. Generate the runtime view (the script selects the patched ntdll.so)
+python3 scripts/prepare_runtime.py \
+    --output local/runtime-modules \
+    --modules local/wine-modules/build
+
+# 3. Check: should list exactly these five real files
+find local/runtime-modules -type f
+
+# 4. Launch
+open "$HOME/Applications/NIKKE Wine.app"
+```
+
+`prepare_runtime.py` now **fails loudly** when the built `ntdll.so` is not
+x86_64, instead of leaving it to surface later as an inscrutable loader error —
+a trap hit earlier in this work.

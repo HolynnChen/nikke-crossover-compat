@@ -167,6 +167,10 @@ def main():
     subprocess.run(cmd, env=menu_env, check=True)
     modules = ['ntoskrnl.exe', 'mfplat.dll', 'mfreadwrite.dll', 'lsass.exe']
     hashes = {name: digest(runtime / 'lib/wine/x86_64-windows' / name) for name in modules}
+    # The Unix half carries the user-mode Rosetta NOP emulation; recording it
+    # keeps the manifest honest about which runtime was actually validated.
+    hashes.update({name: digest(runtime / 'lib/wine/x86_64-unix' / name)
+                   for name in ('ntdll.so',)})
     hashes.update(bootstrap=digest(loader), bridge=digest(bridge))
     manifest = dict(bottle=str(prefix), app=str(app), runtime=str(runtime), sha256=hashes,
                     menu='StartMenu/' + args.menu_name,

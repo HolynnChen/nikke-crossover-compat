@@ -54,9 +54,12 @@ illegal-instruction classification.
 ## Wine module overlay
 
 The pinned-source builder applies reviewable patches and builds three PE
-modules plus a minimal Wine system-process executable. `prepare_runtime.py --modules` copies those modules into a new local
-runtime view while linking unchanged components to the existing installation.
-No driver or game image is rewritten.
+modules, a minimal Wine system-process executable, and ntdll's Unix half.
+`prepare_runtime.py --modules` copies those into a new local runtime view
+while linking unchanged components to the existing installation, and fails
+loudly if the built `ntdll.so` is not x86_64. No driver or game image is
+rewritten. `docs/APPLIED-TECHNIQUES.md` lists exactly which files that view
+replaces, and the evidence for each of them.
 
 The kernel changes provide actual synchronization, object-name lifetime,
 callback-list ownership, and caller-owned memory-range arrays. Their limits
@@ -71,9 +74,13 @@ that supports CPU frames; Unity's response must be verified separately.
 
 ## September update
 
-Patch order is kernel, thread-owner, September update, then media fallback.
-The historical `thread-process-experimental` filename remains for provenance;
-its implementation is now part of the default build. DW-Proton contributions
+Patch order is kernel, thread-owner, September update, ACE kernel exports,
+ACE extended exports, ACE CORE driver stubs, the kernel-mode Rosetta NOP fix,
+the user-mode Rosetta NOP fix, then media fallback. The order is load-bearing:
+each patch is generated against the files as the previous ones left them, so
+the NOP patches in particular must stay after `september-update`, which also
+touches `instr.c`. The historical `thread-process-experimental` filename
+remains for provenance; its implementation is now part of the default build. DW-Proton contributions
 and local changes are itemized in THIRD_PARTY.md.
 
 The memory mapping layer retains a mapped section view while an MDL references

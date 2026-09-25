@@ -2,9 +2,11 @@
 
 **Run the Windows PC version of GODDESS OF VICTORY: NIKKE on an Apple Silicon Mac through CrossOver.**
 
-[简体中文](README.md) · [Installation Guide](docs/INSTALL.en.md) · [Validation](docs/VALIDATION.md) · [Architecture](docs/ARCHITECTURE.md)
+[简体中文](README.md) · [Installation Guide](docs/INSTALL.en.md) · [What is actually applied](docs/APPLIED-TECHNIQUES.en.md) · [Validation](docs/VALIDATION.md) · [Architecture](docs/ARCHITECTURE.md)
 
 This experimental patch set addresses startup compatibility problems, missing Wine APIs, and black background videos observed while running NIKKE. It also installs a persistent launcher entry inside CrossOver.
+
+**For exactly which five files the current runtime replaces, and the evidence behind each, see [What is actually applied](docs/APPLIED-TECHNIQUES.en.md).**
 
 **2026-09-26 update: found the real root cause of the startup failure on Apple silicon — Rosetta 2 cannot translate the register form of the `0F 1F` NOP, which broke both ACE's kernel driver and Unity's IL2CPP.** See the [update notes](docs/UPDATE-2026-09-26.en.md).
 
@@ -59,7 +61,7 @@ python3 scripts/build_wine_modules.py \
     --output local/wine-modules-0.2.0
 
 python3 scripts/prepare_runtime.py \
-    --output local/runtime-0.2.0 \
+    --output local/runtime-modules \
     --modules local/wine-modules-0.2.0/build
 ```
 
@@ -72,7 +74,7 @@ Replace `YOUR_NIKKE_BOTTLE` with the name of your existing NIKKE bottle:
 ```sh
 python3 scripts/install_crossover_entry.py \
     --source-prefix "$HOME/Library/Application Support/CrossOver/Bottles/YOUR_NIKKE_BOTTLE" \
-    --source-runtime local/runtime-0.2.0 \
+    --source-runtime local/runtime-modules \
     --source-app build/NopBridgeLab.app \
     --source-bridge build/libnop_bridge.dylib
 ```
@@ -88,7 +90,7 @@ A GitHub source update does not replace your local runtime automatically. Exit t
 ```sh
 python3 scripts/install_crossover_entry.py \
     --source-prefix "$HOME/Library/Application Support/CrossOver/Bottles/YOUR_NIKKE_BOTTLE" \
-    --source-runtime local/runtime-0.2.0 \
+    --source-runtime local/runtime-modules \
     --source-app build/NopBridgeLab.app \
     --source-bridge build/libnop_bridge.dylib \
     --bottle-name NIKKE-Compatibility-152 \
@@ -129,10 +131,10 @@ Windows/Wine API tests require a separate disposable test bottle:
 
 ```sh
 python3 scripts/test_windows.py --prefix /absolute/path/to/test-bottle \
-    --runtime local/runtime-0.2.0
+    --runtime local/runtime-modules
 python3 scripts/test_wine_modules.py \
     --prefix /absolute/path/to/test-bottle \
-    --runtime local/runtime-0.2.0
+    --runtime local/runtime-modules
 ```
 
 Thread ownership, real process exit status, thread context and mapping-lifetime tests are included by default. To package source only:
