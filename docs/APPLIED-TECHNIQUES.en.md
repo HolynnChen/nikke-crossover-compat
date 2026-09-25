@@ -392,7 +392,7 @@ signature -- and adds no extra layer.
 > on CrossOver.app being installed either way, because the runtime view's files
 > are symlinks into it.
 
-The equivalent graphical entry is `~/Applications/NIKKE Wine (video fix).app`, a
+The equivalent graphical entry is `~/Applications/NIKKE Wine.app`, a
 **newly created** wrapper app; the original `NIKKE Wine.app` is untouched.
 
 ```sh

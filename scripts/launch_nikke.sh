@@ -2,9 +2,9 @@
 # Launch NIKKE with the video fix applied.
 #
 # This deliberately does NOT go through CrossOver's own `bin/wine` wrapper.
-# The existing NIKKE Wine.app sets WINELOADER/CX_WINELOADER to its own bootstrap
-# and loads CrossOver's libraries directly, so it never involves CrossOver's
-# launcher layer. This script reproduces that same environment exactly and adds
+# The app bundle carries its own bootstrap as Contents/MacOS/nikke_wine, and that
+# is what WINELOADER/CX_WINELOADER point at, so CrossOver's launcher layer (and
+# its licence check, which fails on this machine) is never involved. This script reproduces that same environment exactly and adds
 # the one variable the app bundle is missing. That keeps the entry point on the
 # configuration that has actually been verified, and it means editing the app's
 # Info.plist is never necessary -- which matters, because the bundle is ad-hoc

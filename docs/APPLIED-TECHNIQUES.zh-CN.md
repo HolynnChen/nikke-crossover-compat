@@ -353,7 +353,7 @@ WINEDLLOVERRIDES=version=n,b;d3d9,d3d10,d3d10_1,d3d10core,d3d11=n,b
 > 但两条路都同样依赖 CrossOver.app 处于已安装状态，
 > 因为运行时视图里的文件是符号链接指向它的。）
 
-等价的图形入口是 `~/Applications/NIKKE Wine (video fix).app`——一个**新建的**包装
+等价的图形入口是 `~/Applications/NIKKE Wine.app`——一个**新建的**包装
 app，原 `NIKKE Wine.app` 完全未被改动。
 
 ```sh
