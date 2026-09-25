@@ -105,7 +105,10 @@ def main():
         'DYLD_INSERT_LIBRARIES': str(source_bridge),
         'WINEDLLPATH': ':'.join(str(source_runtime / p) for p in (
             'lib/wine/x86_64-windows', 'lib/wine/i386-windows', 'lib/wine')),
-        'CX_GRAPHICS_BACKEND': 'dxvk', 'WINEDLLOVERRIDES': 'version=n,b',
+        'CX_GRAPHICS_BACKEND': 'dxvk',
+        # DXVK's dlls live in the runtime view, which shadows the prefix, so they
+        # must be selected as native or the view's builtin copies load instead.
+        'WINEDLLOVERRIDES': 'version=n,b;d3d9,d3d10,d3d10_1,d3d10core,d3d11=n,b',
         'NOP_BRIDGE_PRIVILEGED': '1', 'NOP_BRIDGE_MF_NO_DXGI': '1',
         # NO_DXGI on its own is a half-configured state: Unity falls back to
         # software while the reader still expects D3D frames, and story video
