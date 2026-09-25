@@ -1,0 +1,276 @@
+Subject: [PATCH] ntoskrnl: implement the stubs ACE's CORE drivers need
+
+ACE-BASE.sys, ACE-CORE.sys and ACE-CORE.sys2 all import ntoskrnl entry
+points that Wine provides only as stubs.  A Wine stub raises
+EXCEPTION_WINE_STUB with EXCEPTION_NONCONTINUABLE, the drivers' own SEH
+catches it, DriverEntry fails and the service start returns
+ERROR_GEN_FAILURE.  ACE then refuses to start the game with
+"failed to load the driver" (1-1720-1100215145).
+
+ACE-CORE.sys and ACE-CORE.sys2 are the two whose start actually fails;
+this implements the ten entry points they import.
+
+---
+
+--- a/dlls/ntoskrnl.exe/ntoskrnl.c
++++ b/dlls/ntoskrnl.exe/ntoskrnl.c
+@@ -5237,4 +5237,175 @@
+ 
+     /* Another thread's TEB is not reachable from here without opening it. */
+     return NULL;
++}
++
++/***********************************************************************
++ *           ACE driver support (round 2)
++ *
++ * ACE's kernel drivers (ACE-BASE.sys, ACE-CORE.sys, ACE-CORE.sys2) import
++ * a number of ntoskrnl entry points that Wine only provides as stubs.  A
++ * Wine stub raises EXCEPTION_WINE_STUB with EXCEPTION_NONCONTINUABLE, so
++ * the drivers' own SEH catches it, DriverEntry fails, and the service
++ * start returns ERROR_GEN_FAILURE.  ACE then shows
++ *
++ *     "无法加载驱动程序，请等待30秒或重启系统之后再次尝试。"
++ *     (1-1720-1100215145)     -- "failed to load the driver"
++ *
++ * and refuses to start the game.
++ *
++ * The functions below are the ones imported by the two ACE-CORE drivers,
++ * which are the ones whose start actually fails.  They are implemented so
++ * that a call never raises a non-continuable exception; where Wine has no
++ * real equivalent the routine reports the unsupported operation instead
++ * of crashing the driver.
++ */
++
++typedef struct _WINE_WORK_QUEUE_ITEM
++{
++    LIST_ENTRY List;
++    void (WINAPI *WorkerRoutine)( void * );
++    void *Parameter;
++} WINE_WORK_QUEUE_ITEM;
++
++static DWORD WINAPI ace_work_item_thread( void *param )
++{
++    WINE_WORK_QUEUE_ITEM *item = param;
++
++    item->WorkerRoutine( item->Parameter );
++    return 0;
+ }
++
++/***********************************************************************
++ *           ExQueueWorkItem   (NTOSKRNL.EXE.@)
++ *
++ * Wine has no kernel worker threads.  Run the routine on a dedicated
++ * thread so that deferred work stays asynchronous, as the API promises.
++ */
++void WINAPI ExQueueWorkItem( WINE_WORK_QUEUE_ITEM *item, ULONG queue_type )
++{
++    HANDLE thread;
++
++    TRACE( "item %p, type %lu.\n", item, queue_type );
++
++    if (!item || !item->WorkerRoutine) return;
++
++    thread = CreateThread( NULL, 0, ace_work_item_thread, item, 0, NULL );
++    if (thread) CloseHandle( thread );
++    else item->WorkerRoutine( item->Parameter );
++}
++
++/***********************************************************************
++ *           IoGetTopLevelIrp   (NTOSKRNL.EXE.@)
++ */
++IRP *WINAPI IoGetTopLevelIrp(void)
++{
++    return NULL;
++}
++
++/***********************************************************************
++ *           IoGetLowerDeviceObject   (NTOSKRNL.EXE.@)
++ *
++ * Wine does not keep a downward pointer in the device stack.  Report that
++ * there is no lower device rather than inventing one, so callers take
++ * their normal "not attached" path.
++ */
++DEVICE_OBJECT *WINAPI IoGetLowerDeviceObject( DEVICE_OBJECT *device )
++{
++    TRACE( "device %p: no lower device in Wine.\n", device );
++    return NULL;
++}
++
++/***********************************************************************
++ *           KeInsertQueueApc   (NTOSKRNL.EXE.@)
++ *
++ * Wine does not deliver kernel APCs.  Report the APC as not queued so the
++ * caller does not wait for a routine that would never run.
++ */
++BOOLEAN WINAPI KeInsertQueueApc( KAPC *apc, void *arg1, void *arg2, LONG priority )
++{
++    FIXME( "apc %p, args %p %p, priority %ld: Wine does not deliver kernel APCs.\n",
++           apc, arg1, arg2, priority );
++    return FALSE;
++}
++
++/***********************************************************************
++ *           MmAllocateMappingAddress   (NTOSKRNL.EXE.@)
++ *
++ * Windows reserves address space here.  Wine has no separate reserved
++ * address pool, so hand out committed pool memory of the requested size,
++ * which satisfies callers that go on to use the range.
++ */
++void *WINAPI MmAllocateMappingAddress( ULONG size, ULONG tag )
++{
++    void *address;
++
++    address = ExAllocatePoolWithTag( NonPagedPool, size, tag );
++    TRACE( "%lu, tag %#lx -> %p.\n", size, tag, address );
++    return address;
++}
++
++/***********************************************************************
++ *           MmFreeMappingAddress   (NTOSKRNL.EXE.@)
++ */
++void WINAPI MmFreeMappingAddress( void *address, ULONG tag )
++{
++    TRACE( "%p, tag %#lx.\n", address, tag );
++    if (address) ExFreePool( address );
++}
++
++/***********************************************************************
++ *           MmFreeContiguousMemory   (NTOSKRNL.EXE.@)
++ *
++ * Wine's MmAllocateContiguousMemory* all return NULL, so there is nothing
++ * to release; freeing a pointer we never handed out would be worse.
++ */
++void WINAPI MmFreeContiguousMemory( void *address )
++{
++    FIXME( "%p: Wine does not allocate contiguous memory, ignoring.\n", address );
++}
++
++/***********************************************************************
++ *           PsIsThreadTerminating   (NTOSKRNL.EXE.@)
++ */
++BOOLEAN WINAPI PsIsThreadTerminating( PETHREAD thread )
++{
++    return FALSE;
++}
++
++/***********************************************************************
++ *           RtlWalkFrameChain   (NTOSKRNL.EXE.@)
++ *
++ * ACE walks its own call chain during initialisation, so this must return
++ * a usable frame list instead of raising.  Skip this frame and reuse the
++ * capture ntdll already implements.
++ */
++ULONG WINAPI RtlWalkFrameChain( void **callers, ULONG count, ULONG flags )
++{
++    if (!callers || !count) return 0;
++    return RtlCaptureStackBackTrace( 1, count > 0xffff ? 0xffff : count, callers, NULL );
++}
++
++/***********************************************************************
++ *           SeCaptureSecurityDescriptor   (NTOSKRNL.EXE.@)
++ *
++ * Return a private copy of the descriptor, which is what the API is for.
++ */
++NTSTATUS WINAPI SeCaptureSecurityDescriptor( SECURITY_DESCRIPTOR *sd, KPROCESSOR_MODE mode,
++        BOOLEAN capture_if_kernel, SECURITY_DESCRIPTOR **captured )
++{
++    ULONG length;
++    SECURITY_DESCRIPTOR *copy;
++
++    if (!captured) return STATUS_INVALID_PARAMETER;
++    *captured = NULL;
++    if (!sd) return STATUS_SUCCESS;
++
++    if (!(length = RtlLengthSecurityDescriptor( sd ))) return STATUS_INVALID_PARAMETER;
++
++    if (!(copy = ExAllocatePool( NonPagedPool, length ))) return STATUS_INSUFFICIENT_RESOURCES;
++    memcpy( copy, sd, length );
++    *captured = copy;
++
++    TRACE( "sd %p -> %p (%lu bytes).\n", sd, copy, length );
++    return STATUS_SUCCESS;
++}
+--- a/dlls/ntoskrnl.exe/ntoskrnl.exe.spec
++++ b/dlls/ntoskrnl.exe/ntoskrnl.exe.spec
+@@ -184,7 +184,7 @@
+ @ stdcall ExLocalTimeToSystemTime(ptr ptr) RtlLocalTimeToSystemTime
+ @ stdcall ExNotifyCallback(ptr ptr ptr)
+ @ stub ExQueryPoolBlockSize
+-@ stub ExQueueWorkItem
++@ stdcall ExQueueWorkItem(ptr long)
+ @ stub ExRaiseAccessViolation
+ @ stub ExRaiseDatatypeMisalignment
+ @ stub ExRaiseException
+@@ -418,13 +418,13 @@
+ @ stdcall IoGetDriverObjectExtension(ptr ptr)
+ @ stub IoGetFileObjectGenericMapping
+ @ stdcall IoGetInitialStack()
+-@ stub IoGetLowerDeviceObject
++@ stdcall IoGetLowerDeviceObject(ptr)
+ @ stdcall IoGetRelatedDeviceObject(ptr)
+ @ stdcall IoGetRequestorProcess(ptr)
+ @ stub IoGetRequestorProcessId
+ @ stub IoGetRequestorSessionId
+ @ stdcall IoGetStackLimits(ptr ptr)
+-@ stub IoGetTopLevelIrp
++@ stdcall IoGetTopLevelIrp()
+ @ stdcall IoInitializeIrp(ptr long long)
+ @ stdcall IoInitializeRemoveLockEx(ptr long long long long)
+ @ stdcall IoInitializeTimer(ptr ptr ptr)
+@@ -597,7 +597,7 @@
+ @ stdcall KeInsertDeviceQueue(ptr ptr)
+ @ stub KeInsertHeadQueue
+ @ stdcall KeInsertQueue(ptr ptr)
+-@ stub KeInsertQueueApc
++@ stdcall KeInsertQueueApc(ptr ptr ptr long)
+ @ stdcall KeInsertQueueDpc(ptr ptr ptr)
+ @ stub KeIsAttachedProcess
+ @ stub KeIsExecutingDpc
+@@ -709,7 +709,7 @@
+ @ stub MmAdvanceMdl
+ @ stdcall MmAllocateContiguousMemory(long int64)
+ @ stdcall MmAllocateContiguousMemorySpecifyCache(long int64 int64 int64 long)
+-@ stub MmAllocateMappingAddress
++@ stdcall MmAllocateMappingAddress(long long)
+ @ stdcall MmAllocateNonCachedMemory(long)
+ @ stdcall MmAllocatePagesForMdl(int64 int64 int64 long)
+ @ stdcall MmBuildMdlForNonPagedPool(ptr)
+@@ -722,9 +722,9 @@
+ @ stub MmDisableModifiedWriteOfSection
+ @ stub MmFlushImageSection
+ @ stub MmForceSectionClosed
+-@ stub MmFreeContiguousMemory
++@ stdcall MmFreeContiguousMemory(ptr)
+ @ stub MmFreeContiguousMemorySpecifyCache
+-@ stub MmFreeMappingAddress
++@ stdcall MmFreeMappingAddress(ptr long)
+ @ stdcall MmFreeNonCachedMemory(ptr long)
+ @ stub MmFreePagesFromMdl
+ @ stdcall MmGetPhysicalAddress(ptr)
+@@ -953,7 +953,7 @@
+ @ stub PsIsProcessBeingDebugged
+ @ stdcall PsIsSystemThread(ptr)
+ @ stub PsIsThreadImpersonating
+-@ stub PsIsThreadTerminating
++@ stdcall PsIsThreadTerminating(ptr)
+ @ extern PsJobType
+ @ stdcall PsLookupProcessByProcessId(ptr ptr)
+ @ stub PsLookupProcessThreadByCid
+@@ -1326,7 +1326,7 @@
+ @ stdcall RtlVerifyVersionInfo(ptr long int64)
+ @ stdcall -arch=!i386 RtlVirtualUnwind(long long long ptr ptr ptr ptr ptr)
+ @ stub RtlVolumeDeviceToDosName
+-@ stub RtlWalkFrameChain
++@ stdcall RtlWalkFrameChain(ptr long long)
+ @ stdcall RtlWriteRegistryValue(long ptr ptr long ptr long)
+ @ stub RtlZeroHeap
+ @ stdcall RtlZeroMemory(ptr long)
+@@ -1344,7 +1344,7 @@
+ @ stub SeAuditingFileOrGlobalEvents
+ @ stub SeAuditingHardLinkEvents
+ @ stub SeAuditingHardLinkEventsWithContext
+-@ stub SeCaptureSecurityDescriptor
++@ stdcall SeCaptureSecurityDescriptor(ptr long long ptr)
+ @ stub SeCaptureSubjectContext
+ @ stub SeCloseObjectAuditAlarm
+ @ stub SeCreateAccessState

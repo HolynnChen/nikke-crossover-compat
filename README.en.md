@@ -6,16 +6,18 @@
 
 This experimental patch set addresses startup compatibility problems, missing Wine APIs, and black background videos observed while running NIKKE. It also installs a persistent launcher entry inside CrossOver.
 
+**2026-09-26 update: found the real root cause of the startup failure on Apple silicon — Rosetta 2 cannot translate the register form of the `0F 1F` NOP, which broke both ACE's kernel driver and Unity's IL2CPP.** See the [update notes](docs/UPDATE-2026-09-26.en.md).
+
 **2026-09-23 update: ACE kernel exports completed, full installation guide added.** See the [update notes](docs/UPDATE-2026-09-23.en.md).
 
 **2026-09-22 update: compatibility work for NIKKE PC Global 152.8.11.** On Apple Silicon with CrossOver 26.1, the user confirmed lobby access, combat and a tower run. After restoring the playable configuration, the user again confirmed responsive lobby navigation. Background animation worked and frame rate felt normal.
 
-This is the **0.3.0 experimental source update**, adding the 7 kernel exports ACE needs on top of 0.2.0, plus bilingual installation guides.
+This is the **0.4.0 experimental source update**: it fixes the multi-byte NOP Rosetta cannot translate (one root cause behind both the ACE kernel driver and IL2CPP) and adds the 10 stubs ACE's CORE drivers need. See the [0.4.0 notes](docs/UPDATE-2026-09-26.en.md), [0.3.0 notes](docs/UPDATE-2026-09-23.en.md) and [0.2.0 notes](docs/UPDATE-2026-09-22.en.md).
 
 ## What does it address?
 
 - **ACE anti-cheat startup failure:** implement 7 `ntoskrnl.exe` kernel exports that ACE calls but CrossOver does not provide (`KeTryToAcquireGuardedMutex`, `KeIpiGenericCall`, `PsGetCurrentThreadTeb`, and others). Without them the game refuses to start.
-- **Startup compatibility:** handle specific register-NOP forms rejected by Rosetta on the tested machine, correct privileged-instruction exception classification, and supply several Wine kernel APIs used during startup.
+- **Startup compatibility:** handle the register-NOP forms Rosetta rejects on the tested machine (the macOS-side `nop_bridge`, plus new ntoskrnl / ntdll emulation on the Wine side), correct privileged-instruction exception classification, and supply both several Wine kernel APIs used during startup and the stubs ACE's drivers import.
 - **Black background video:** expose an unsupported DXGI-video capability early enough for the application to take its software fallback.
 - **Repeatable launching:** keep the runtime in a persistent location and open the official NIKKE launcher from CrossOver's application list.
 - **Blurry graphics:** use CrossOver's High Resolution Mode in the separate bottle. The tested game's stored window size increased from 1388×781 to 2202×1340.

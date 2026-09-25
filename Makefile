@@ -54,5 +54,7 @@ build/thread_context_test.exe: tests/thread_context_test.c | build
 	$(WINCC) $(CFLAGS) -static $< -o $@
 build/mdl_mapping_test.exe: tests/mdl_mapping_test.c | build
 	$(WINCC) $(CFLAGS) -static $< -o $@
+build/nkwin2.exe: tests/nkwin2.c | build
+	$(WINCC) $(CFLAGS) -static -municode $< -o $@ -luser32
 clean:
 	rm -rf build

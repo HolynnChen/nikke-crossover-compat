@@ -17,9 +17,24 @@ PATCHES = ("crossover-26.1-kernel.patch",
            "crossover-26.1-september-update.patch",
            "crossover-26.1-ace-kernel-exports.patch",
            "crossover-26.1-ace-extended-exports.patch",
+           "crossover-26.1-ace-core-driver-stubs.patch",
+           "crossover-26.1-ntoskrnl-rosetta-nop.patch",
+           "crossover-26.1-rosetta-multibyte-nop.patch",
            "crossover-26.1-mf-software.patch")
 MODULES = {"ntoskrnl.exe": "dlls/ntoskrnl.exe", "mfreadwrite.dll": "dlls/mfreadwrite",
            "mfplat.dll": "dlls/mfplat", "lsass.exe": "programs/lsass"}
+# ntdll.so is a Unix library rather than a PE module, so it is built
+# separately.  Two things matter here:
+#   * the host compiler targets the host arch, which on Apple silicon is
+#     arm64, but the bootstrap and every runtime this repo drives are
+#     x86_64, so the library has to be built for x86_64 explicitly;
+#   * --enable-archs=x86_64 makes configure add -DIS_WOW64_BUILD, which
+#     describes the WoW64 host side.  We want a native 64-bit ntdll, so
+#     that define is left out.
+NTDLL_TARGET = "dlls/ntdll/ntdll.so"
+NTDLL_CC = "clang -arch x86_64"
+NTDLL_CFLAGS = "-O2 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+NTDLL_UNIX_OBJECTS = "dlls/ntdll/unix"
 
 
 def main():
@@ -89,9 +104,24 @@ def main():
     with (target / "build.log").open("w") as log:
         subprocess.run(["make", "-j8", *targets], cwd=build, env=env,
                        stdout=log, stderr=subprocess.STDOUT, check=True)
+    # Any ntdll Unix object already present was compiled for the host arch;
+    # drop it so the x86_64 rebuild below is not skipped as up to date.
+    unix_objects = build / NTDLL_UNIX_OBJECTS
+    if unix_objects.is_dir():
+        for stale in unix_objects.glob("*.o"): stale.unlink()
+    (build / NTDLL_TARGET).unlink(missing_ok=True)
+    unix_env = env.copy()
+    unix_env["CC"] = NTDLL_CC
+    unix_env["OBJC"] = NTDLL_CC
+    unix_env["CFLAGS"] = NTDLL_CFLAGS
+    with (target / "build-ntdll.log").open("w") as log:
+        subprocess.run(["make", "-j8", NTDLL_TARGET], cwd=build, env=unix_env,
+                       stdout=log, stderr=subprocess.STDOUT, check=True)
     for name, directory in MODULES.items():
         result = build / directory / "x86_64-windows" / name
         print(f"{name}: {hashlib.sha256(result.read_bytes()).hexdigest()}")
+    ntdll = build / NTDLL_TARGET
+    print(f"ntdll.so: {hashlib.sha256(ntdll.read_bytes()).hexdigest()}")
     print(f"Build complete: {build}. No runtime or bottle was modified.")
 
 

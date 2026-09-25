@@ -6,16 +6,18 @@
 
 这是面向 NIKKE 的实验性兼容补丁。它针对本次测试中遇到的启动异常、部分 Wine 接口缺失和背景视频黑屏问题，并提供固定在 CrossOver 中的启动入口。
 
+**2026-09-26 更新：找到苹果芯片上进不去的真正根因——Rosetta 2 无法翻译 `0F 1F` 的寄存器形式 NOP，它同时卡死了 ACE 内核驱动和 Unity 的 IL2CPP。** 详见 [本次更新](docs/UPDATE-2026-09-26.zh-CN.md)。
+
 **2026-09-23 更新：补齐 ACE 反作弊所需的内核导出，新增完整安装指南。** 详见 [本次更新](docs/UPDATE-2026-09-23.zh-CN.md)。
 
 **2026-09-22 更新：适配 NIKKE PC 国际服 152.8.11。** 已在 Apple Silicon + CrossOver 26.1 上实测进入大厅、战斗和爬塔；恢复可玩配置后，用户再次确认大厅页面可正常切换、不卡顿。背景动画正常，帧率体感正常。
 
-本次发布为 **0.3.0 实验性源码更新**，在 0.2.0 基础上补齐 ACE 所需的 7 个内核导出，并新增中英双语安装指南。详见 [本次更新](docs/UPDATE-2026-09-23.zh-CN.md) 与 [0.2.0 更新](docs/UPDATE-2026-09-22.zh-CN.md)。
+本次发布为 **0.4.0 实验性源码更新**，在 0.3.0 基础上修掉 Rosetta 不支持的多字节 NOP（ACE 内核驱动与 IL2CPP 的同一个根因），并补齐 ACE CORE 驱动所需的 10 个 stub。详见 [本次更新](docs/UPDATE-2026-09-26.zh-CN.md)、[0.3.0 更新](docs/UPDATE-2026-09-23.zh-CN.md) 与 [0.2.0 更新](docs/UPDATE-2026-09-22.zh-CN.md)。
 
 ## 它解决什么问题？
 
 - **ACE 反作弊启动失败：**补齐 ACE 调用但 CrossOver 未实现的 7 个 `ntoskrnl.exe` 内核导出（`KeTryToAcquireGuardedMutex`、`KeIpiGenericCall`、`PsGetCurrentThreadTeb` 等）。缺失会使游戏直接拒绝启动。
-- **启动兼容性：**处理本机 Rosetta 无法正确执行的少量 NOP 指令形式，修正特权指令异常分类，并补充游戏启动过程中调用的部分 Wine 内核接口。
+- **启动兼容性：**处理本机 Rosetta 无法正确执行的少量 NOP 指令形式（macOS 侧 `nop_bridge`，以及 Wine 侧新增的 ntoskrnl / ntdll 模拟），修正特权指令异常分类，并补充游戏启动过程中调用的部分 Wine 内核接口与 ACE 驱动所需的 stub。
 - **背景动画黑屏：**让视频播放尽早使用应用支持的软件回退路径。
 - **后续启动：**把配置和运行时保存在持久目录，直接从 CrossOver 的程序列表打开官方 NIKKE 启动器。
 - **画面模糊：**支持在这个独立容器中开启 CrossOver 高分辨率模式；本机窗口配置由 1388×781 提高至 2202×1340。
