@@ -21,7 +21,26 @@
 
 ## 安装
 
-完整步骤见 **[安装指南](docs/INSTALL.zh-CN.md)**。概要：
+**一条命令装完（推荐）：**
+
+```sh
+scripts/install_all.sh --installer ~/Downloads/NIKKE.PC_Offcial_GL_152.8.13.exe
+```
+
+它会依次检查依赖 → 下载并校验 CrossOver 源码包 → 构建 macOS 层 → 构建 Wine 补丁模块
+（**耗时数十分钟**）→ 生成运行时 → 创建前缀 → 装好 4 个模块 → 运行游戏安装程序 →
+建好启动 app。**可以重复执行**，已完成的步骤会自动跳过。
+
+有两件事它替你做不了：
+
+- **安装 CrossOver 本体** —— 商业软件，请先自行安装；
+- **下载 NIKKE 客户端** —— 没有稳定的公开直链。自己下载后用 `--installer <路径>` 传入，
+  或用 `--installer-url <直链>` 让它下载。
+
+登录账号与 10 GB 以上的资源下载在启动器内完成，无法自动化。
+
+<details>
+<summary>想手动分步做，或只想看每一步在干什么</summary>
 
 ```sh
 # 1. macOS 侧兼容层
@@ -34,17 +53,24 @@ python3 scripts/build_wine_modules.py \
 # 3. 生成运行时视图
 python3 scripts/prepare_runtime.py \
     --output local/runtime-modules --modules local/wine-modules/build
-```
 
-```sh
 # 4. 创建前缀并安装游戏（不需要打开 CrossOver 界面，也不会建 CrossOver 容器）
 #    第二个参数是游戏安装包；省略它就只创建前缀，之后再单独跑安装包
 scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" <安装包.exe>
+
+# 5. 把运行时模块装进前缀，并创建启动 app
+for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
+  cp "local/runtime-modules/lib/wine/x86_64-windows/$f" \
+     "$HOME/Library/Application Support/NIKKE-Wine/drive_c/windows/system32/"
+done
+scripts/create_launch_app.sh
+
 ```
 
-然后把运行时模块装进这个前缀，并创建启动入口 —— 见安装指南第四、六节。
+完整说明见 **[安装指南](docs/INSTALL.zh-CN.md)**。已经装好 NIKKE 的话，跳过第 4 步。
+**安装和游玩全程都不需要 CrossOver 的图形界面。**
 
-> 已经装好 NIKKE 的话，跳过第 4 步。**安装和游玩全程都不需要 CrossOver 的图形界面。**
+</details>
 
 ## 启动
 

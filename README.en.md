@@ -23,7 +23,27 @@ data.
 
 ## Installing
 
-Full steps are in the **[install guide](docs/INSTALL.en.md)**. In short:
+**One command (recommended):**
+
+```sh
+scripts/install_all.sh --installer ~/Downloads/NIKKE.PC_Offcial_GL_152.8.13.exe
+```
+
+It checks prerequisites, downloads and verifies the CrossOver source archive, builds the macOS
+layer, builds the Wine patch modules (**tens of minutes**), produces the runtime, creates the
+prefix, installs the four modules, runs the game's installer, and creates the launcher app.
+**Re-running is safe**: finished steps are skipped.
+
+Two things it cannot do for you:
+
+- **Install CrossOver** -- commercial software; install it first.
+- **Download the NIKKE client** -- there is no stable public URL. Download it yourself and pass
+  `--installer <path>`, or give a direct link with `--installer-url <url>`.
+
+Logging in and the >10 GB asset download happen inside the launcher and cannot be automated.
+
+<details>
+<summary>Prefer to do it step by step, or want to see what each stage does</summary>
 
 ```sh
 # 1. the macOS-side compatibility layer
@@ -36,19 +56,24 @@ python3 scripts/build_wine_modules.py \
 # 3. produce the runtime view
 python3 scripts/prepare_runtime.py \
     --output local/runtime-modules --modules local/wine-modules/build
-```
 
-```sh
 # 4. create the prefix and install the game (no CrossOver GUI, no CrossOver bottle)
-#    the second argument is the game's installer; omit it to only create the prefix
+#    the second argument is the installer; omit it to only create the prefix
 scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" <installer.exe>
+
+# 5. install the runtime modules into the prefix and create the launcher app
+for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
+  cp "local/runtime-modules/lib/wine/x86_64-windows/$f" \
+     "$HOME/Library/Application Support/NIKKE-Wine/drive_c/windows/system32/"
+done
+scripts/create_launch_app.sh
+
 ```
 
-Then install the runtime modules into that prefix and create the launch entry -- see sections 4 and
-6 of the install guide.
+Full details are in the **[install guide](docs/INSTALL.en.md)**. Skip step 4 if NIKKE is already
+installed. **Neither installing nor playing needs CrossOver's graphical interface.**
 
-> Skip step 4 if NIKKE is already installed. **Neither installing nor playing needs CrossOver's
-> graphical interface.**
+</details>
 
 ## Launching
 

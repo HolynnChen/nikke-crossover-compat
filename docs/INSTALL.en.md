@@ -6,6 +6,12 @@ plus how to update this project's compatibility patches afterwards.
 Based on the actual installation performed 2026-09-22 ~ 09-23.
 Every command and path below was verified on the reference machine.
 
+> **Want one command instead?** From the repository root run
+> `scripts/install_all.sh --installer <installer.exe>`. It performs everything in
+> sections 3 and 4 for you (including downloading and verifying the CrossOver source
+> archive) and creates the launcher app. Re-running is safe -- finished steps are
+> skipped. The rest of this guide is the same work, step by step.
+
 ---
 
 ## Contents

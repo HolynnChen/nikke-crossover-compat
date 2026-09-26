@@ -46,8 +46,29 @@ if [ -f "$PREFIX/system.reg" ]; then
     echo "prefix already exists: $PREFIX"
 else
     echo "creating prefix: $PREFIX"
-    run_wine wineboot.exe
-    echo "prefix created"
+    # wineboot is chatty (cxcompatdb/setupapi err: lines that are normal at this stage),
+    # so its output goes to a log and is only shown if it actually fails.
+    LOG_DIR="$ROOT/local/logs"
+    mkdir -p "$LOG_DIR"
+    LOG="$LOG_DIR/prefix-create.log"
+    if ! run_wine wineboot.exe >"$LOG" 2>&1; then
+        echo "wineboot failed; last lines of $LOG:" >&2
+        tail -20 "$LOG" >&2
+        exit 1
+    fi
+    # wineboot returns before the registry has hit the disk: system.reg appears a few
+    # seconds later. Without waiting, a caller that checks for the prefix immediately
+    # concludes it is missing, and a re-run rebuilds a prefix that already exists.
+    waited=0
+    while [ ! -f "$PREFIX/system.reg" ] || [ ! -f "$PREFIX/user.reg" ]; do
+        waited=$((waited + 1))
+        if [ "$waited" -gt 60 ]; then
+            echo "prefix did not finish initialising within 60s (log: $LOG)" >&2
+            exit 1
+        fi
+        sleep 1
+    done
+    echo "prefix created (wineboot output in $LOG)"
 fi
 
 if [ -n "$INSTALLER" ]; then
