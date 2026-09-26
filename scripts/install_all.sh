@@ -5,7 +5,7 @@
 #
 # What it automates
 #   1. checks the prerequisites
-#   2. downloads the CrossOver 26.1 source archive and verifies its hash
+#   2. downloads the CrossOver 26.3 source archive and verifies its hash
 #   3. builds the macOS-side layer                      (make && make test)
 #   4. builds the patched Wine modules                  (slow: tens of minutes)
 #   5. produces the runtime view
@@ -26,7 +26,7 @@ set -eu
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 PREFIX=${NIKKE_PREFIX:-"$HOME/Library/Application Support/NIKKE-Wine"}
-ARCHIVE=${NIKKE_ARCHIVE:-"$ROOT/local/downloads/crossover-sources-26.1.0.tar.gz"}
+ARCHIVE=${NIKKE_ARCHIVE:-"$ROOT/local/downloads/crossover-sources-26.3.0.tar.gz"}
 MODULES_OUT="$ROOT/local/wine-modules"
 RUNTIME_OUT="$ROOT/local/runtime-modules"
 INSTALLER=${NIKKE_INSTALLER:-}
@@ -48,7 +48,7 @@ Usage: scripts/install_all.sh [options]
   --yes                 do not ask before the long build
   -h, --help            this text
 
-Prerequisites it checks: CrossOver 26.1, Rosetta, python3, make, curl, Xcode Command
+Prerequisites it checks: CrossOver 26.3, Rosetta, python3, make, curl, Xcode Command
 Line Tools, and bison 3 (install with: brew install bison).
 EOF
 }
@@ -90,8 +90,8 @@ if [ -d "$MODULES_OUT" ] && [ "$FORCE" -ne 1 ]; then NEED_MODULES=0; fi
 step "1/9 checking prerequisites"
 
 CROSSOVER=${CX_ROOT:-/Applications/CrossOver.app/Contents/SharedSupport/CrossOver}
-[ -d "$CROSSOVER" ] || die "CrossOver not found at $CROSSOVER -- install CrossOver 26.1 first"
-echo "  CrossOver 26.1: $CROSSOVER"
+[ -d "$CROSSOVER" ] || die "CrossOver not found at $CROSSOVER -- install CrossOver 26.3 first"
+echo "  CrossOver 26.3: $CROSSOVER"
 
 if /usr/bin/arch -x86_64 /usr/bin/true 2>/dev/null; then
     echo "  Rosetta: working"
@@ -137,7 +137,7 @@ else
     fi
 
     actual=$(shasum -a 256 "$ARCHIVE" | awk '{print $1}')
-    [ "$actual" = "$SOURCE_SHA" ] || die "$ARCHIVE does not match the pinned CrossOver 26.1 hash
+    [ "$actual" = "$SOURCE_SHA" ] || die "$ARCHIVE does not match the pinned CrossOver 26.3 hash
   expected $SOURCE_SHA
   actual   $actual"
     echo "  sha256 verified"

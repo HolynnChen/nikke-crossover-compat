@@ -35,7 +35,7 @@
 |---|---|
 | 硬件 | Apple Silicon（M 系列）；实测 **Apple M4 Pro**（Mac16,7）|
 | macOS | **26.6.2**（25G83，实测）|
-| CrossOver | 26.1 |
+| CrossOver | 26.3 |
 | 游戏 | NIKKE PC 国际服 **152.8.13**（实测）|
 | Rosetta | 已安装 |
 | Python | 3.x |
@@ -43,10 +43,9 @@
 | Bison | 3.x（`brew install bison`）|
 | MinGW-w64 | 用于构建 Windows 探针 |
 
-> **CrossOver 要用 26.1。** 补丁按 26.1 的源码锚定，运行时视图里 800 多个文件也是指向
-> CrossOver 安装目录的符号链接，升级 CrossOver 会让它们指向别的内容。
-> `brew install --cask crossover` 装的是最新版（当前 26.3.0）；26.1 可用 brew 保留的
-> `/opt/homebrew/Caskroom/crossover/26.1.0/CrossOver.app`，或从 CodeWeavers 官网下载。
+> **CrossOver 用 26.3**（当前正式版；补丁同时适用于 26.1 和 26.3）。补丁按 26.3 的源码锚定，
+> 运行时视图里 800 多个文件也是指向 CrossOver 安装目录的符号链接 —— 升级 CrossOver 后，
+> 必须用同一版本的源码重新构建模块。
 
 ### 安装依赖
 
@@ -133,14 +132,14 @@ make test
 从 CodeWeavers 下载官方源码：
 
 ```sh
-curl -LO https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.1.0.tar.gz
+curl -LO https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.3.0.tar.gz
 ```
 
 ### 3.3 构建 Wine 补丁模块
 
 ```sh
 python3 scripts/build_wine_modules.py \
-    --archive "$PWD/crossover-sources-26.1.0.tar.gz" \
+    --archive "$PWD/crossover-sources-26.3.0.tar.gz" \
     --output local/wine-modules
 ```
 
@@ -148,11 +147,11 @@ python3 scripts/build_wine_modules.py \
 
 | 补丁 | 作用 |
 |---|---|
-| `crossover-26.1-kernel.patch` | Rosetta NOP 指令与特权异常处理 |
-| `crossover-26.1-thread-process-experimental.patch` | 线程所属进程查询 |
-| `crossover-26.1-september-update.patch` | 152.8.11 驱动入口与内存映射 |
-| `crossover-26.1-ace-kernel-exports.patch` | **ACE 反作弊所需的内核导出** |
-| `crossover-26.1-mf-software.patch` | 视频软件回退（修复黑屏）|
+| `crossover-kernel.patch` | Rosetta NOP 指令与特权异常处理 |
+| `crossover-thread-process-experimental.patch` | 线程所属进程查询 |
+| `crossover-september-update.patch` | 152.8.11 驱动入口与内存映射 |
+| `crossover-ace-kernel-exports.patch` | **ACE 反作弊所需的内核导出** |
+| `crossover-mf-software.patch` | 视频软件回退（修复黑屏）|
 
 脚本会校验源码包的固定 SHA-256，不匹配会拒绝构建。
 
@@ -306,7 +305,7 @@ git pull
 # 构建到新目录，不覆盖正在用的那份
 make && make test
 python3 scripts/build_wine_modules.py \
-    --archive "$PWD/crossover-sources-26.1.0.tar.gz" --output local/wine-modules-new
+    --archive "$PWD/crossover-sources-26.3.0.tar.gz" --output local/wine-modules-new
 python3 scripts/prepare_runtime.py \
     --output local/runtime-modules-new --modules local/wine-modules-new/build
 
@@ -359,7 +358,7 @@ Unity 拿不到 DXGI device manager 而退到软件回退，reader 侧却仍按 
 
 ### 启动器黑屏
 
-`crossover-26.1-mf-software.patch` 负责这部分（视频走软件回退）。
+`crossover-mf-software.patch` 负责这部分（视频走软件回退）。
 确认补丁已应用。
 
 ### ACE 相关报错
@@ -376,7 +375,7 @@ Unity 拿不到 DXGI device manager 而退到软件回退，reader 侧却仍按 
 ERR( "KeBugCheck %lx called from %p\n", code, __builtin_return_address(0) );
 ```
 
-然后在 `patches/crossover-26.1-ace-kernel-exports.patch` 里补上对应实现。
+然后在 `patches/crossover-ace-kernel-exports.patch` 里补上对应实现。
 
 ### 画面模糊
 
@@ -391,10 +390,10 @@ ERR( "KeBugCheck %lx called from %p\n", code, __builtin_return_address(0) );
 cd /path/to/nikke-crossover-compat
 make && make test
 
-curl -LO https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.1.0.tar.gz
+curl -LO https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.3.0.tar.gz
 
 python3 scripts/build_wine_modules.py \
-    --archive "$PWD/crossover-sources-26.1.0.tar.gz" \
+    --archive "$PWD/crossover-sources-26.3.0.tar.gz" \
     --output local/wine-modules
 
 python3 scripts/prepare_runtime.py \

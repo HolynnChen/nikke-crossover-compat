@@ -14,7 +14,7 @@ described here.
 |---|---|
 | Mac | Apple Silicon (verified on an **M4 Pro**) |
 | macOS | **26.6.2** |
-| CrossOver | **26.1**, with Rosetta installed |
+| CrossOver | **26.3**, with Rosetta installed |
 | Game | the NIKKE PC International installer (**152.8.13 verified**) -- you download the client yourself; this project has no direct link for it |
 | Build tools | Xcode Command Line Tools, Python 3, Bison 3, MinGW-w64 |
 
@@ -24,25 +24,20 @@ data.
 > If NIKKE is already installed and its official launcher opens and logs in, skip the game
 > installation and do only the patching part.
 
-> **The CrossOver version needs pinning.** Every patch here is anchored to **26.1**'s source
-> (the build verifies the archive's SHA-256), and more than 800 files in the runtime view are
-> **symlinks into CrossOver's install directory** -- upgrading CrossOver changes what they
-> point at.
+> **Use CrossOver 26.3** (the current release; `brew install --cask crossover` installs it). Every
+> patch is anchored to **26.3**'s source, which the build verifies by SHA-256, and more than 800
+> files in the runtime view are **symlinks into CrossOver's install directory** -- upgrading
+> CrossOver changes what they point at.
 >
-> `brew install --cask crossover` installs the **latest** version (26.3.0 at the time of
-> writing), not 26.1. For 26.1 you can use the copy brew keeps at
-> `/opt/homebrew/Caskroom/crossover/26.1.0/CrossOver.app`, or download it from CodeWeavers.
-> Keep automatic updates off (`SUAutomaticallyUpdate` defaults to false).
-
-> **On upgrading to 26.3:** verified here at source level -- all **10 patches apply cleanly**
-> to 26.3 (`local/check-patches.sh`, in build order). 26.1 to 26.3 are bug-fix-only releases:
-> the Wine base is **11.0** in both, and DXVK is **v1.10.3** in both. Of the 11085 files in the
-> Wine tree only 12 differ, none of them a module this project replaces or a patch target, and
-> the DXVK/GStreamer/MoltenVK/vkd3d inventories are identical. The published runtime,
-> however, is built and tested against 26.1; upgrading means **rebuilding the modules from
-> 26.3's source too**, because more than 800 files in the view are symlinks into CrossOver and
-> an upgrade swaps them all. Note that from 26.2 CrossOver warns about 32-bit bottles, and this
-> project's prefix is 32-bit (the launcher is a 32-bit program).
+> So **after upgrading CrossOver you must rebuild the modules from that same version's source**;
+> otherwise you have a new runtime paired with old modules. Keep automatic updates off
+> (`SUAutomaticallyUpdate` defaults to false).
+>
+> The patches apply to **26.1 and 26.3** alike (measured): of the 11085 files in the Wine tree only
+> 12 differ, none of them a module this project replaces or a patch target; both sit on Wine 11.0
+> and ship DXVK v1.10.3. The launcher and the game have both been tested on 26.3. Note that from
+> 26.2 CrossOver warns about 32-bit bottles, and this project's prefix is 32-bit (the launcher is a
+> 32-bit program).
 
 ## Installing
 
@@ -72,9 +67,9 @@ Logging in and the >10 GB asset download happen inside the launcher and cannot b
 # 1. the macOS-side compatibility layer
 make && make test
 
-# 2. build the Wine patch modules from the CrossOver 26.1 source archive (download it first)
+# 2. build the Wine patch modules from the CrossOver 26.3 source archive (download it first)
 python3 scripts/build_wine_modules.py \
-    --archive /path/to/crossover-sources-26.1.0.tar.gz --output local/wine-modules
+    --archive /path/to/crossover-sources-26.3.0.tar.gz --output local/wine-modules
 
 # 3. produce the runtime view
 python3 scripts/prepare_runtime.py \

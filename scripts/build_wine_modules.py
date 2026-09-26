@@ -10,21 +10,21 @@ import subprocess
 import tarfile
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_URL = "https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.1.0.tar.gz"
-SOURCE_SHA256 = "e4ec87d5821a009dd1f1d2e36ffe2e24b8fcbae9516375ea42f95a16928ab8fa"
+SOURCE_URL = "https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.3.0.tar.gz"
+SOURCE_SHA256 = "ac99c8ca4b3848f3e81784135f023df266b61c2345726ea55a50b3e030dd6872"
 PATCHES = (
-           "crossover-26.1-kernel.patch",
-           "crossover-26.1-thread-process-experimental.patch",
-           "crossover-26.1-september-update.patch",
-           "crossover-26.1-ace-kernel-exports.patch",
-           "crossover-26.1-ace-extended-exports.patch",
-           "crossover-26.1-ace-core-driver-stubs.patch",
-           "crossover-26.1-ntoskrnl-rosetta-nop.patch",
-           "crossover-26.1-rosetta-multibyte-nop.patch",
-           "crossover-26.1-mf-software.patch",
+           "crossover-kernel.patch",
+           "crossover-thread-process-experimental.patch",
+           "crossover-september-update.patch",
+           "crossover-ace-kernel-exports.patch",
+           "crossover-ace-extended-exports.patch",
+           "crossover-ace-core-driver-stubs.patch",
+           "crossover-ntoskrnl-rosetta-nop.patch",
+           "crossover-rosetta-multibyte-nop.patch",
+           "crossover-mf-software.patch",
            # PE-side ntdll (Chromium/CEF command line). Independent of
            # the unix-side patch above: loader.c vs unix/signal_x86_64.c.
-           "crossover-26.1-chromium-flags.patch")
+           "crossover-chromium-flags.patch")
 MODULES = {"ntoskrnl.exe": "dlls/ntoskrnl.exe", "mfreadwrite.dll": "dlls/mfreadwrite",
            "mfplat.dll": "dlls/mfplat", "lsass.exe": "programs/lsass",
            "ntdll.dll": "dlls/ntdll"}
@@ -41,6 +41,29 @@ NTDLL_CC = "clang -arch x86_64"
 NTDLL_CFLAGS = "-O2 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
 NTDLL_UNIX_OBJECTS = "dlls/ntdll/unix"
 
+MACHO_MAGICS = (0xFEEDFACF, 0xFEEDFACE)
+MACHO_CPU_X86_64 = 0x01000007
+MACHO_CPUS = {MACHO_CPU_X86_64: "x86_64", 0x0100000C: "arm64"}
+
+
+def require_x86_64(path):
+    """Refuse a Mach-O artifact that is not x86_64.
+
+    Every process here runs as x86_64 under Rosetta, so an arm64 library simply
+    cannot be loaded by it.  Checking at build time keeps that from surfacing
+    only when the game refuses to start.
+    """
+    header = path.read_bytes()[:8]
+    if len(header) < 8:
+        raise ValueError(f"{path} is too short to be a Mach-O file")
+    magic = int.from_bytes(header[0:4], "little")
+    if magic not in MACHO_MAGICS:
+        raise ValueError(f"{path} is not a little-endian Mach-O file (magic {magic:#x})")
+    cpu = int.from_bytes(header[4:8], "little")
+    if cpu != MACHO_CPU_X86_64:
+        name = MACHO_CPUS.get(cpu, f"cputype {cpu:#x}")
+        raise ValueError(f"{path} was built for {name}; this project needs x86_64")
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -55,7 +78,7 @@ def main():
     with archive.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""): digest.update(chunk)
     if digest.hexdigest() != SOURCE_SHA256:
-        parser.error("archive does not match the pinned CrossOver 26.1 source hash")
+        parser.error("archive does not match the pinned CrossOver 26.3 source hash")
     target = args.output.resolve()
     if target.exists(): parser.error("output already exists; choose a new --output")
     target.mkdir(parents=True)
@@ -115,13 +138,17 @@ def main():
     if unix_objects.is_dir():
         for stale in unix_objects.glob("*.o"): stale.unlink()
     (build / NTDLL_TARGET).unlink(missing_ok=True)
-    unix_env = env.copy()
-    unix_env["CC"] = NTDLL_CC
-    unix_env["OBJC"] = NTDLL_CC
-    unix_env["CFLAGS"] = NTDLL_CFLAGS
+    # CC/CFLAGS have to be make command-line variables, not environment variables:
+    # configure bakes them into the generated Makefile, and a Makefile assignment
+    # beats the environment.  Passing them in the environment silently did nothing,
+    # so the host compiler built this Unix library for the host architecture --
+    # arm64 here -- and kept the -DIS_WOW64_BUILD define we do not want.  A
+    # command-line variable overrides the Makefile, which is the effect intended.
     with (target / "build-ntdll.log").open("w") as log:
-        subprocess.run(["make", "-j8", NTDLL_TARGET], cwd=build, env=unix_env,
+        subprocess.run(["make", "-j8", f"CC={NTDLL_CC}", f"OBJC={NTDLL_CC}",
+                        f"CFLAGS={NTDLL_CFLAGS}", NTDLL_TARGET], cwd=build, env=env,
                        stdout=log, stderr=subprocess.STDOUT, check=True)
+    require_x86_64(build / NTDLL_TARGET)
     # lsass.exe is built as a console application, but this project registers it
     # as the WineLsassCompat service, so Wine allocates a console for it at
     # session start and a conhost.exe window appears -- one that outlives the

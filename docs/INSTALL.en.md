@@ -33,7 +33,7 @@ Every command and path below was verified on the reference machine.
 |---|---|
 | Hardware | Apple Silicon (M-series); measured on **Apple M4 Pro** (Mac16,7) |
 | macOS | **26.6.2** (25G83, measured) |
-| CrossOver | 26.1 |
+| CrossOver | 26.3 |
 | Game | NIKKE PC International **152.8.13** (measured) |
 | Rosetta | installed |
 | Python | 3.x |
@@ -41,11 +41,10 @@ Every command and path below was verified on the reference machine.
 | Bison | 3.x (`brew install bison`) |
 | MinGW-w64 | for building Windows probes |
 
-> **Use CrossOver 26.1.** The patches are anchored to 26.1's source, and more than 800 files
-> in the runtime view are symlinks into CrossOver's install directory, so upgrading CrossOver
-> changes what they point at. `brew install --cask crossover` installs the latest (26.3.0 at
-> the time of writing); for 26.1 use the copy brew keeps at
-> `/opt/homebrew/Caskroom/crossover/26.1.0/CrossOver.app`, or download it from CodeWeavers.
+> **Use CrossOver 26.3** (the current release; the patches apply to 26.1 and 26.3 alike). They are
+> anchored to 26.3's source, and more than 800 files in the runtime view are symlinks into
+> CrossOver's install directory -- so after upgrading CrossOver you must rebuild the modules
+> from that same version's source.
 
 ```sh
 brew install bison mingw-w64
@@ -134,14 +133,14 @@ make test
 ### 3.2 Fetch the CrossOver source
 
 ```sh
-curl -LO https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.1.0.tar.gz
+curl -LO https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.3.0.tar.gz
 ```
 
 ### 3.3 Build the Wine patch modules
 
 ```sh
 python3 scripts/build_wine_modules.py \
-    --archive "$PWD/crossover-sources-26.1.0.tar.gz" \
+    --archive "$PWD/crossover-sources-26.3.0.tar.gz" \
     --output local/wine-modules
 ```
 
@@ -149,11 +148,11 @@ Patches applied, in order:
 
 | Patch | Purpose |
 |---|---|
-| `crossover-26.1-kernel.patch` | Rosetta NOP forms and privileged-exception handling |
-| `crossover-26.1-thread-process-experimental.patch` | thread owning-process queries |
-| `crossover-26.1-september-update.patch` | 152.8.11 driver entry points and memory mapping |
-| `crossover-26.1-ace-kernel-exports.patch` | **kernel exports required by ACE** |
-| `crossover-26.1-mf-software.patch` | video software fallback (fixes the black screen) |
+| `crossover-kernel.patch` | Rosetta NOP forms and privileged-exception handling |
+| `crossover-thread-process-experimental.patch` | thread owning-process queries |
+| `crossover-september-update.patch` | 152.8.11 driver entry points and memory mapping |
+| `crossover-ace-kernel-exports.patch` | **kernel exports required by ACE** |
+| `crossover-mf-software.patch` | video software fallback (fixes the black screen) |
 
 The script verifies a pinned SHA-256 of the source archive and refuses to
 build on mismatch.
@@ -312,7 +311,7 @@ git pull
 # build into new directories, leaving the ones in use alone
 make && make test
 python3 scripts/build_wine_modules.py \
-    --archive "$PWD/crossover-sources-26.1.0.tar.gz" --output local/wine-modules-new
+    --archive "$PWD/crossover-sources-26.3.0.tar.gz" --output local/wine-modules-new
 python3 scripts/prepare_runtime.py \
     --output local/runtime-modules-new --modules local/wine-modules-new/build
 
@@ -367,7 +366,7 @@ Redo [section 4](#4-installing-into-the-wine-prefix).
 
 ### Launcher black screen
 
-Handled by `crossover-26.1-mf-software.patch` (video takes the software
+Handled by `crossover-mf-software.patch` (video takes the software
 fallback path). Confirm the patch was applied.
 
 ### ACE errors
@@ -384,7 +383,7 @@ ERR( "KeBugCheck %lx called from %p\n", code, __builtin_return_address(0) );
 ```
 
 Then add the missing implementation to
-`patches/crossover-26.1-ace-kernel-exports.patch`.
+`patches/crossover-ace-kernel-exports.patch`.
 
 ### Blurry image
 
@@ -398,10 +397,10 @@ Enable **High Resolution Mode** for the bottle in CrossOver and restart it.
 cd /path/to/nikke-crossover-compat
 make && make test
 
-curl -LO https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.1.0.tar.gz
+curl -LO https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.3.0.tar.gz
 
 python3 scripts/build_wine_modules.py \
-    --archive "$PWD/crossover-sources-26.1.0.tar.gz" \
+    --archive "$PWD/crossover-sources-26.3.0.tar.gz" \
     --output local/wine-modules
 
 python3 scripts/prepare_runtime.py \

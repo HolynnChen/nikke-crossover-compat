@@ -22,9 +22,9 @@ FILES = [
     "scripts/build_wine_modules.py",
     "scripts/test_wine_modules.py",
     "scripts/install_crossover_entry.py",
-    "patches/crossover-26.1-kernel.patch", "patches/crossover-26.1-mf-software.patch",
-    "patches/crossover-26.1-thread-process-experimental.patch",
-    "patches/crossover-26.1-september-update.patch",
+    "patches/crossover-kernel.patch", "patches/crossover-mf-software.patch",
+    "patches/crossover-thread-process-experimental.patch",
+    "patches/crossover-september-update.patch",
     "docs/UPDATE-2026-09-22.zh-CN.md", "docs/UPDATE-2026-09-22.en.md",
     "docs/VALIDATION.md", "docs/ARCHITECTURE.md",
 ]

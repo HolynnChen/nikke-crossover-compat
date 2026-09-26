@@ -9,16 +9,16 @@ Reference: Wine commit `36b6a2cf679fb395f668a917b76537190e212d9c`,
 Copyright 2000, and Wine contributors, under LGPL-2.1-or-later.
 Those attribution and licensing terms are retained here and in the bootstrap.
 
-`patches/crossover-26.1-kernel.patch` and
-`patches/crossover-26.1-mf-software.patch` modify Wine sources distributed by
-CodeWeavers with CrossOver 26.1. Their context and modified source retain the
+`patches/crossover-kernel.patch` and
+`patches/crossover-mf-software.patch` modify Wine sources distributed by
+CodeWeavers with CrossOver 26.3. Their context and modified source retain the
 Wine contributors' LGPL-2.1-or-later licensing. The guarded-mutex operations
 follow upstream Wine `dlls/ntoskrnl.exe/sync.c` at the reference commit above.
 The process-name cache, callback-registration lifetime, memory-range ownership
 and opt-in media fallback changes were authored for this investigation.
 
 The upstream source archive is:
-https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.1.0.tar.gz
+https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.3.0.tar.gz
 SHA-256: `e4ec87d5821a009dd1f1d2e36ffe2e24b8fcbae9516375ea42f95a16928ab8fa`.
 It is fetched separately and is not included in the source package.
 
@@ -54,7 +54,7 @@ redistributed. Product names identify test environments, not affiliation.
 
 ## September 2026 update
 
-`patches/crossover-26.1-september-update.patch` adapts LGPL-2.1-or-later
+`patches/crossover-september-update.patch` adapts LGPL-2.1-or-later
 work from [DW-Proton's Wine tree](https://dawn.wine/dawn-winery/wine-dwproton):
 
 - Driver entry return-address compatibility: mkrsym1,

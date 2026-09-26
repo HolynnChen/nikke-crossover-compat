@@ -13,7 +13,7 @@
 |---|---|
 | Mac | Apple Silicon（已在 **M4 Pro** 上验证）|
 | macOS | **26.6.2** |
-| CrossOver | **26.1**，Rosetta 已安装 |
+| CrossOver | **26.3**，Rosetta 已安装 |
 | 游戏 | NIKKE PC 国际服安装包（**152.8.13 已验证**）—— 客户端需你自行下载，本项目不提供直链 |
 | 构建依赖 | Xcode Command Line Tools、Python 3、Bison 3、MinGW-w64 |
 
@@ -21,22 +21,17 @@
 
 > 已经装好 NIKKE、官方启动器能打开能登录的话，跳过与安装游戏有关的步骤，只做打补丁那部分即可。
 
-> **CrossOver 版本需要固定。** 本项目按 **26.1** 的源码锚定全部补丁（构建时会校验源码包的
-> SHA-256），而且运行时视图里 800 多个文件是**指向 CrossOver 安装目录的符号链接** ——
-> CrossOver 一旦升级，它们指向的内容就跟着变了。
+> **CrossOver 用 26.3**（当前正式版；`brew install --cask crossover` 装的就是它）。全部补丁按
+> **26.3** 的源码锚定，构建时会校验源码包的 SHA-256；运行时视图里 800 多个文件是**指向 CrossOver
+> 安装目录的符号链接** —— CrossOver 一旦升级，它们指向的内容就跟着变了。
 >
-> `brew install --cask crossover` 装的是**最新版**（当前 26.3.0），并不是 26.1。要 26.1，可以
-> 直接用 brew 保留的那份：`/opt/homebrew/Caskroom/crossover/26.1.0/CrossOver.app`，或从
-> CodeWeavers 官网下载。另外**不要让它自动更新**（`SUAutomaticallyUpdate` 默认即 false）。
-
-> **关于升级到 26.3：** 已在本机做源码级验证 —— 本项目 **10 个补丁全部可干净应用到 26.3**
-> （`local/check-patches.sh`，按构建顺序）。26.1→26.3 是纯 bug 修复版：Wine 基线同为
-  > **11.0**，DXVK 同为 **v1.10.3**。整棵 Wine 树 11085 个文件里只差 12 个，且**没有一个是**
-> 本项目替换的模块或补丁的目标文件；DXVK/GStreamer/MoltenVK/vkd3d 的组件清单完全一致。
-> 但目前发布的运行时是按 26.1 构建并实测过的；若要升级，
-> 必须**同时用 26.3 的源码重新构建模块**，因为视图里 800 多个文件是指向 CrossOver 的链接，
-> 升级会一并换掉。注意 26.2 起 CrossOver 会对 32 位容器给出额外警告，而本项目的容器正是
-> 32 位（启动器是 32 位程序）。
+> 所以**升级 CrossOver 后必须用同一版本的源码重新构建模块**，否则就是新运行时配旧模块。另外别
+> 开自动更新（`SUAutomaticallyUpdate` 默认即 false）。
+>
+> 这些补丁同时适用于 **26.1 和 26.3**（已实测）：两版 Wine 树 11085 个文件只差 12 个，且没有一个
+> 涉及本项目替换的模块或补丁目标；Wine 基线同为 11.0，DXVK 同为 v1.10.3。26.3 上的启动器与游戏
+> 均已实测正常。注意 26.2 起 CrossOver 会对 32 位容器给出额外警告，而本项目的容器正是 32 位
+> （启动器是 32 位程序）。
 
 ## 安装
 
@@ -65,9 +60,9 @@ scripts/install_all.sh --installer ~/Downloads/NIKKE.PC_Offcial_GL_<版本>.exe
 # 1. macOS 侧兼容层
 make && make test
 
-# 2. 从 CrossOver 26.1 源码包构建 Wine 补丁模块（需先下载源码包）
+# 2. 从 CrossOver 26.3 源码包构建 Wine 补丁模块（需先下载源码包）
 python3 scripts/build_wine_modules.py \
-    --archive /path/to/crossover-sources-26.1.0.tar.gz --output local/wine-modules
+    --archive /path/to/crossover-sources-26.3.0.tar.gz --output local/wine-modules
 
 # 3. 生成运行时视图
 python3 scripts/prepare_runtime.py \
