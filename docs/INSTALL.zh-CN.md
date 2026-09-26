@@ -161,16 +161,7 @@ python3 scripts/prepare_runtime.py \
 
 ## 四、安装到 Wine 前缀
 
-两种方式选一个，区别在**要不要动你原来的安装**：
-
-| | 方式 A（推荐） | 方式 B |
-|---|---|---|
-| 做什么 | 直接替换现有前缀里的模块 | **克隆出一个独立容器**，在副本上装 |
-| 原安装 | 被就地修改 | 完全不动 |
-| 出来的东西 | 还是你原来那个前缀 | 一个新的 CrossOver 容器 + 菜单入口 |
-| 适用 | 想接着用原来的前缀 | 想保留原安装，或想要 CrossOver 菜单入口 |
-
-### 4.1 方式 A：安装到已有前缀（推荐）
+### 4.1 把模块装进前缀
 
 如果已经有一个装好 NIKKE 的前缀，只替换兼容层模块。
 
@@ -206,29 +197,13 @@ done
 > **前缀与视图两层都要更新。** 视图通过 `WINEDLLPATH` 挂在最前面并遮蔽前缀，
 > 只更新一层会出现「视图已修好、前缀还是旧版」的不一致。
 
-### 4.2 方式 B：创建独立容器
+### 4.2 例外：安装是 CrossOver 容器时
 
-> **只适用于源安装是 CrossOver 容器的情况。** 这个脚本需要一个带 `cxbottle.conf` 的
-> CrossOver 容器作为源（由 CrossOver 图形界面或 `cxbottle --create` 创建）。
-> 按[第二节](#二创建前缀并安装游戏)用 `create_prefix.sh` 建出来的是**纯 Wine 前缀**，
-> 没有 `cxbottle.conf`，请用方式 A。
+本指南第二节建的是**纯 Wine 前缀**，用上面的方式即可。
 
-```sh
-python3 scripts/install_crossover_entry.py \
-    --source-prefix "$HOME/Library/Application Support/CrossOver/Bottles/YOUR_NIKKE_BOTTLE" \
-    --source-runtime local/runtime-modules \
-    --source-app build/NopBridgeLab.app \
-    --source-bridge build/libnop_bridge.dylib \
-    --bottle-name NIKKE-Compatibility-152 \
-    --menu-name "NIKKE Compatibility 152" \
-    --support "$HOME/Library/Application Support/NIKKE Compatibility 152"
-```
-
-脚本用 APFS 克隆创建独立容器，保留已下载资源；
-原始容器不动；已有同名目标不会被覆盖。
-
-这一步同样**不需要打开 CrossOver 界面** —— 脚本只是写文件并调用 CrossOver 的命令行工具
-登记菜单项。菜单项本身是可选的，用[第六节](#六日常启动)的 app 启动就不需要它。
+如果你的 NIKKE 是用 CrossOver 图形界面（或 `cxbottle --create`）装的 **CrossOver 容器**，
+并且你想要一个**独立副本** —— 原容器完全不动，另有一个带 CrossOver 菜单入口的克隆 ——
+可以用 `scripts/install_crossover_entry.py`，参数见 `--help`。
 
 ---
 
@@ -295,8 +270,7 @@ python3 scripts/test_wine_modules.py \
 cd /path/to/nikke-crossover-compat && scripts/launch_nikke.sh
 ```
 
-> 若按 [4.2](#42-方式-b创建独立容器) 建了独立容器，也可以从 CrossOver 菜单进入；
-> 采用 4.1（已有前缀）时菜单里没有该入口，用上面这个 app 启动。
+> 本项目的安装不依赖 CrossOver 的容器菜单 —— 用上面这个 app 启动即可。
 
 启动配置使用 **DXVK**。在 CrossOver 里改图形后端不会自动改写此专用配置。
 
@@ -317,33 +291,36 @@ cd /path/to/nikke-crossover-compat && scripts/launch_nikke.sh
 ```sh
 cd /path/to/nikke-crossover-compat
 git pull
-git checkout <新分支>
 
-# 重新构建
+# 构建到新目录，不覆盖正在用的那份
 make && make test
 python3 scripts/build_wine_modules.py \
-    --archive "$PWD/crossover-sources-26.1.0.tar.gz" \
-    --output local/wine-modules-<新版本>
+    --archive "$PWD/crossover-sources-26.1.0.tar.gz" --output local/wine-modules-new
 python3 scripts/prepare_runtime.py \
-    --output local/runtime-<新版本> \
-    --modules local/wine-modules-<新版本>/build
+    --output local/runtime-modules-new --modules local/wine-modules-new/build
 
-# 安装（替换成新目录）
-RUNTIME="$PWD/local/runtime-<新版本>"
-cp "$RUNTIME/lib/wine/x86_64-windows/ntoskrnl.exe" \
-   "$HOME/Library/Application Support/NIKKE-Wine/drive_c/windows/system32/"
-cp "$RUNTIME/lib/wine/x86_64-windows/lsass.exe" \
-   "$HOME/Library/Application Support/NIKKE-Wine/drive_c/windows/system32/"
+# 备份并替换全部 4 个模块（与第四节相同 ——
+# 漏掉 mfplat.dll / mfreadwrite.dll 会让剧情重新卡死）
+PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
+mkdir -p /tmp/nikke-compat-backup
+for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
+  cp -p "$PREFIX/drive_c/windows/system32/$f" /tmp/nikke-compat-backup/
+  cp "local/runtime-modules-new/lib/wine/x86_64-windows/$f" \
+     "$PREFIX/drive_c/windows/system32/"
+done
+
+# 启用新视图：换成启动脚本默认使用的那一份
+mv local/runtime-modules local/runtime-modules-old
+mv local/runtime-modules-new local/runtime-modules
 ```
 
-**新入口确认可用前，保留旧文件。** 恢复方式：
+**确认新版本可用之前，保留旧文件。** 回滚：
 
 ```sh
-cp /tmp/nikke-compat-backup/*.exe \
-   "$HOME/Library/Application Support/NIKKE-Wine/drive_c/windows/system32/"
+cp /tmp/nikke-compat-backup/* \"$PREFIX/drive_c/windows/system32/\"
+mv local/runtime-modules local/runtime-modules-bad
+mv local/runtime-modules-old local/runtime-modules
 ```
-
----
 
 ## 八、故障排查
 

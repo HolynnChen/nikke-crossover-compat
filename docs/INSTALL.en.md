@@ -163,16 +163,7 @@ that will not close). Both must take effect inside the view: it sits on `WINEDLL
 
 ## 4. Installing into the Wine prefix
 
-Pick one. The difference is **whether your existing install is touched**:
-
-| | Option A (recommended) | Option B |
-|---|---|---|
-| What it does | replaces the modules in your existing prefix | **clones a separate bottle** and installs into the copy |
-| Your install | modified in place | left completely untouched |
-| What you get | the prefix you already had | a new CrossOver bottle plus a menu entry |
-| Use it when | you want to keep using that prefix | you want the original preserved, or a CrossOver menu entry |
-
-### 4.1 Option A — existing prefix (recommended)
+### 4.1 Installing the modules
 
 Replace only the compatibility modules:
 
@@ -206,31 +197,14 @@ done
 `error c0000135`. Generating the view with `prepare_runtime.py` cannot miss
 > this, because the script copies that unmodified `ntdll.dll` in from CrossOver.
 
-### 4.2 Option B — separate bottle
+### 4.2 Exception — when the install is a CrossOver bottle
 
-> **Only applies when the source install is a CrossOver bottle.** This script needs a
-> bottle containing `cxbottle.conf` as its source (created through CrossOver's GUI or by
-> `cxbottle --create`). A prefix made by `create_prefix.sh` in
-> [section 2](#2-creating-the-prefix-and-installing-nikke) is a **plain Wine prefix**
-> with no `cxbottle.conf`, so use Option A there.
+Section 2 of this guide creates a **plain Wine prefix**, so use the option above.
 
-```sh
-python3 scripts/install_crossover_entry.py \
-    --source-prefix "$HOME/Library/Application Support/CrossOver/Bottles/YOUR_NIKKE_BOTTLE" \
-    --source-runtime local/runtime-modules \
-    --source-app build/NopBridgeLab.app \
-    --source-bridge build/libnop_bridge.dylib \
-    --bottle-name NIKKE-Compatibility-152 \
-    --menu-name "NIKKE Compatibility 152" \
-    --support "$HOME/Library/Application Support/NIKKE Compatibility 152"
-```
-
-Uses APFS cloning, preserves downloaded assets, leaves the source bottle
-untouched, and never overwrites an existing target.
-
-This step also **needs no CrossOver GUI** -- the script only writes files and calls
-CrossOver's command-line tools to register the menu entry. The entry is optional:
-launching with the app from [section 6](#6-launching) does not need it.
+If your NIKKE was installed as a **CrossOver bottle** (through CrossOver's GUI, or by
+`cxbottle --create`) and you want a **separate copy** -- the original left completely
+untouched, plus a clone with its own CrossOver menu entry -- use
+`scripts/install_crossover_entry.py`; see `--help` for its arguments.
 
 ---
 
@@ -299,9 +273,7 @@ DXVK, and the d3d native overrides). Equivalent from a shell:
 cd /path/to/nikke-crossover-compat && scripts/launch_nikke.sh
 ```
 
-> If you created a separate bottle per [4.2](#42-option-b--separate-bottle) you can also
-> launch from the CrossOver menu; with 4.1 (an existing prefix) there is no such entry, so use
-> the app above.
+> This installation does not rely on CrossOver's bottle menu -- launch with the app above.
 
 The launch profile uses **DXVK**. Changing the graphics backend in CrossOver
 does not rewrite this dedicated profile.
@@ -324,31 +296,36 @@ Let the official launcher download the update itself.
 ```sh
 cd /path/to/nikke-crossover-compat
 git pull
-git checkout <new-branch>
 
+# build into new directories, leaving the ones in use alone
 make && make test
 python3 scripts/build_wine_modules.py \
-    --archive "$PWD/crossover-sources-26.1.0.tar.gz" \
-    --output local/wine-modules-<new>
+    --archive "$PWD/crossover-sources-26.1.0.tar.gz" --output local/wine-modules-new
 python3 scripts/prepare_runtime.py \
-    --output local/runtime-<new> \
-    --modules local/wine-modules-<new>/build
+    --output local/runtime-modules-new --modules local/wine-modules-new/build
 
-RUNTIME="$PWD/local/runtime-<new>"
-cp "$RUNTIME/lib/wine/x86_64-windows/ntoskrnl.exe" \
-   "$HOME/Library/Application Support/NIKKE-Wine/drive_c/windows/system32/"
-cp "$RUNTIME/lib/wine/x86_64-windows/lsass.exe" \
-   "$HOME/Library/Application Support/NIKKE-Wine/drive_c/windows/system32/"
+# back up and replace all four modules (as in section 4 --
+# skipping mfplat.dll or mfreadwrite.dll makes story scenes hang again)
+PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
+mkdir -p /tmp/nikke-compat-backup
+for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
+  cp -p "$PREFIX/drive_c/windows/system32/$f" /tmp/nikke-compat-backup/
+  cp "local/runtime-modules-new/lib/wine/x86_64-windows/$f" \
+     "$PREFIX/drive_c/windows/system32/"
+done
+
+# switch to the new view: replace the one the launcher uses by default
+mv local/runtime-modules local/runtime-modules-old
+mv local/runtime-modules-new local/runtime-modules
 ```
 
 **Keep the old files until the new build is confirmed working.** To roll back:
 
 ```sh
-cp /tmp/nikke-compat-backup/*.exe \
-   "$HOME/Library/Application Support/NIKKE-Wine/drive_c/windows/system32/"
+cp /tmp/nikke-compat-backup/* \"$PREFIX/drive_c/windows/system32/\"
+mv local/runtime-modules local/runtime-modules-bad
+mv local/runtime-modules-old local/runtime-modules
 ```
-
----
 
 ## 8. Troubleshooting
 
