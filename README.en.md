@@ -38,8 +38,17 @@ python3 scripts/prepare_runtime.py \
     --output local/runtime-modules --modules local/wine-modules/build
 ```
 
-Then install the runtime modules into your Wine prefix and create the launch entry -- see sections
-4 and 6 of the install guide.
+```sh
+# 4. create the prefix and install the game (no CrossOver GUI, no CrossOver bottle)
+scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine"
+scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" <installer.exe>
+```
+
+Then install the runtime modules into that prefix and create the launch entry -- see sections 4 and
+6 of the install guide.
+
+> Skip step 4 if NIKKE is already installed. **Neither installing nor playing needs CrossOver's
+> graphical interface.**
 
 ## Launching
 

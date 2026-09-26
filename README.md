@@ -36,7 +36,15 @@ python3 scripts/prepare_runtime.py \
     --output local/runtime-modules --modules local/wine-modules/build
 ```
 
-然后把运行时模块装进你的 Wine 前缀，并创建启动入口 —— 见安装指南第四、六节。
+```sh
+# 4. 创建前缀并安装游戏（不需要打开 CrossOver 界面，也不会建 CrossOver 容器）
+scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine"
+scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" <安装包.exe>
+```
+
+然后把运行时模块装进这个前缀，并创建启动入口 —— 见安装指南第四、六节。
+
+> 已经装好 NIKKE 的话，跳过第 4 步。**安装和游玩全程都不需要 CrossOver 的图形界面。**
 
 ## 启动
 

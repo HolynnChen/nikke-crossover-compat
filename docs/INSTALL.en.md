@@ -11,7 +11,7 @@ Every command and path below was verified on the reference machine.
 ## Contents
 
 - [1. Prerequisites](#1-prerequisites)
-- [2. Installing NIKKE](#2-installing-nikke)
+- [2. Creating the prefix and installing NIKKE](#2-creating-the-prefix-and-installing-nikke)
 - [3. Building the compatibility patches](#3-building-the-compatibility-patches)
 - [4. Installing into the Wine prefix](#4-installing-into-the-wine-prefix)
 - [5. Verifying the installation](#5-verifying-the-installation)
@@ -52,36 +52,53 @@ launcher    ~/Applications/NIKKE Wine.app
 
 ---
 
-## 2. Installing NIKKE
+## 2. Creating the prefix and installing NIKKE
 
-> Skip to [section 3](#3-building-the-compatibility-patches) if the official
-> launcher already opens and logs in.
+> Skip to [section 3](#3-building-the-compatibility-patches) if the launcher is
+> already installed, opens, and logs in.
+
+**None of this needs CrossOver's graphical interface, and no bottle is created in
+CrossOver.** Only the Wine libraries that CrossOver installs are used; the prefix is
+created from the command line by this project and is a **plain Wine prefix**, so it
+never appears in CrossOver's bottle list.
+
+> Note: this step needs [section 3](#3-building-the-compatibility-patches) done first,
+> because creating the prefix uses this project's runtime.
 
 ### 2.1 Download the PC build
 
 Get the **NIKKE PC International** installer (`NIKKE.PC_Offcial_GL_<version>.exe`).
 Verified version: `152.8.13`.
 
-### 2.2 Install via CrossOver
+### 2.2 Create the prefix
 
-1. CrossOver → **Install Windows Software**
-2. Pick the downloaded installer
-3. Suggested bottle name: `NIKKE-Compatibility`
-4. Keep the default install path `C:\NIKKE\Launcher`
+```sh
+scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine"
+```
 
-### 2.3 First launch — let it download assets
+`wineboot` prints a number of `err:` lines while building the prefix (`cxcompatdb`,
+`setupapi` and friends). They are normal noise at this stage and do not affect the
+result; `prefix created` means it worked.
 
-Launch the official launcher from CrossOver, log in, and **let it finish
-downloading all assets**.
+### 2.3 Install the game
 
-> ⚠️ The initial download exceeds 10 GB and the game's own downloader is slow
-> (~0.3 MB/s). On a poor connection this can take hours.
+```sh
+scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" \
+    ~/Downloads/NIKKE.PC_Offcial_GL_152.8.13.exe
+```
 
-### 2.4 Confirm the launcher works
+Follow the installer, keeping the default install path `C:\NIKKE\Launcher`.
 
-The official launcher opens, logs in, and shows a "Start Game" button.
-If the launcher itself does not open, fix that first — this project's patches
-do not repair the launcher.
+### 2.4 First launch -- let it download assets
+
+Open the launcher the way this project does (see [section 6](#6-launching)), log in,
+and **let it finish downloading all assets**.
+
+> The initial download exceeds 10 GB and the game's own downloader is slow
+> (~0.3 MB/s), so it can take hours on a poor connection.
+
+> If the launcher shows a black screen here, the compatibility patches are not
+> installed yet -- finish sections 3 and 4 first.
 
 ---
 
@@ -190,6 +207,10 @@ python3 scripts/install_crossover_entry.py \
 
 Uses APFS cloning, preserves downloaded assets, leaves the source bottle
 untouched, and never overwrites an existing target.
+
+This step also **needs no CrossOver GUI** -- the script only writes files and calls
+CrossOver's command-line tools to register the menu entry. The entry is optional:
+launching with the app from [section 6](#6-launching) does not need it.
 
 ---
 
