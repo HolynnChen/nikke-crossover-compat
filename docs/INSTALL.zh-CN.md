@@ -161,6 +161,15 @@ python3 scripts/prepare_runtime.py \
 
 ## 四、安装到 Wine 前缀
 
+两种方式选一个，区别在**要不要动你原来的安装**：
+
+| | 方式 A（推荐） | 方式 B |
+|---|---|---|
+| 做什么 | 直接替换现有前缀里的模块 | **克隆出一个独立容器**，在副本上装 |
+| 原安装 | 被就地修改 | 完全不动 |
+| 出来的东西 | 还是你原来那个前缀 | 一个新的 CrossOver 容器 + 菜单入口 |
+| 适用 | 想接着用原来的前缀 | 想保留原安装，或想要 CrossOver 菜单入口 |
+
 ### 4.1 方式 A：安装到已有前缀（推荐）
 
 如果已经有一个装好 NIKKE 的前缀，只替换兼容层模块。
@@ -198,6 +207,11 @@ done
 > 只更新一层会出现「视图已修好、前缀还是旧版」的不一致。
 
 ### 4.2 方式 B：创建独立容器
+
+> **只适用于源安装是 CrossOver 容器的情况。** 这个脚本需要一个带 `cxbottle.conf` 的
+> CrossOver 容器作为源（由 CrossOver 图形界面或 `cxbottle --create` 创建）。
+> 按[第二节](#二创建前缀并安装游戏)用 `create_prefix.sh` 建出来的是**纯 Wine 前缀**，
+> 没有 `cxbottle.conf`，请用方式 A。
 
 ```sh
 python3 scripts/install_crossover_entry.py \

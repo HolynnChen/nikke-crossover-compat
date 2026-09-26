@@ -163,6 +163,15 @@ that will not close). Both must take effect inside the view: it sits on `WINEDLL
 
 ## 4. Installing into the Wine prefix
 
+Pick one. The difference is **whether your existing install is touched**:
+
+| | Option A (recommended) | Option B |
+|---|---|---|
+| What it does | replaces the modules in your existing prefix | **clones a separate bottle** and installs into the copy |
+| Your install | modified in place | left completely untouched |
+| What you get | the prefix you already had | a new CrossOver bottle plus a menu entry |
+| Use it when | you want to keep using that prefix | you want the original preserved, or a CrossOver menu entry |
+
 ### 4.1 Option A — existing prefix (recommended)
 
 Replace only the compatibility modules:
@@ -198,6 +207,12 @@ done
 > this, because the script copies that unmodified `ntdll.dll` in from CrossOver.
 
 ### 4.2 Option B — separate bottle
+
+> **Only applies when the source install is a CrossOver bottle.** This script needs a
+> bottle containing `cxbottle.conf` as its source (created through CrossOver's GUI or by
+> `cxbottle --create`). A prefix made by `create_prefix.sh` in
+> [section 2](#2-creating-the-prefix-and-installing-nikke) is a **plain Wine prefix**
+> with no `cxbottle.conf`, so use Option A there.
 
 ```sh
 python3 scripts/install_crossover_entry.py \
