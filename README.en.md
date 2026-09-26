@@ -143,7 +143,10 @@ sudo bash scripts/fix-nikke-hosts.sh --cdn-only   # CDN only; gateways are check
 
 On Windows, run `scripts/fix-nikke-hosts.bat` (it asks for administrator rights itself).
 
-They resolve each domain through Google DoH with EDNS Client Subnet to learn the answer other
+They cover the download CDNs, the lobby and match gateways, and the web, launcher API and login
+domains -- the latter are poisoned too (`0.0.0.1` / `127.0.0.1`), and without them you cannot log in.
+
+The scripts resolve each domain through Google DoH with EDNS Client Subnet to learn the answer other
 regions receive, measure those candidates from this machine (ICMP first, TLS handshake with
 certificate validation as a fallback), and write the fastest one into hosts. Everything runs
 concurrently -- roughly 12-30 seconds in total. The current hosts file is backed up first.

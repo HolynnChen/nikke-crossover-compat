@@ -13,7 +13,7 @@
 # 它做什么
 #   1) 体检：逐个检查 hosts 里已 pin 的域名是否还能连通（TCP+TLS）
 #   2) 选优：对 CDN 类域名，从多个地区的解析结果里挑当前最快的节点
-#   3) 默认 CDN 类与网关类都写入；加 --cdn-only 可只动 CDN 类
+#   3) 默认除 plain 外都写入（cdn/gateway/web/api/auth）；--cdn-only 只动下载 CDN
 #      （网关类改动会影响能否登录，写入后请进游戏确认；--dry-run 可先预览）
 #
 # ★ 候选 IP 怎么来
@@ -57,7 +57,16 @@ sea-match.nikke-kr.com:gateway
 hmt-lobby.nikke-kr.com:gateway
 hmt-match.nikke-kr.com:gateway
 cos-dev.nikke-kr.com:plain
-nikke-kr.com:plain
+nikke-kr.com:web
+nikke-en.com:web
+nikke-jp.com:web
+www.jupiterlauncher.com:api
+na.fleetlogd.com:api
+pass.levelinfinite.com:auth
+aws-na.intlgame.com:auth
+sg-vas.intlgame.com:auth
+li-sg.intlgame.com:auth
+sg-gamenative001-1300342648.file.myqcloud.com:cdn
 "
 
 # 用于"模拟各地区解析"的网段。不需要很精确，只需能代表该地区。
@@ -252,7 +261,7 @@ for entry in $DOMAINS; do
 
             if [ "$do_write" -eq 1 ]; then
                 allowed=1
-                if [ "$kind" = "gateway" ] && [ "$INCLUDE_GATEWAYS" -eq 0 ]; then allowed=0; fi
+                if [ "$kind" != "cdn" ] && [ "$INCLUDE_GATEWAYS" -eq 0 ]; then allowed=0; fi
                 if [ "$allowed" -eq 1 ]; then
                     printf '   → 写入 %s（%s）\n' "$best" "$why"
                     if [ "$DRY_RUN" -eq 1 ]; then
@@ -265,7 +274,7 @@ for entry in $DOMAINS; do
                     if [ "$pin_ok" -eq 0 ]; then
                         printf '   ⚠ 现值不可达，但当前是 --cdn-only；请去掉该参数重跑以修复\n'
                     else
-                        printf '   （网关类；如只想动 CDN 类请加 --cdn-only）\n'
+                        printf '   （%s 类；--cdn-only 下只写下载 CDN）\n' "$kind" 
                     fi
                 fi
             elif [ -n "$best" ] && [ "$best" = "$pin" ]; then

@@ -7,7 +7,8 @@ rem        不写 hosts 就连不上。本脚本会：
 rem          1) 体检：检查 hosts 里已 pin 的域名是否还能连通
 rem          2) 选优：用 EDNS Client Subnet 从多个地区解析域名，拿到各地区
 rem             会得到的 IP，再从本机实测延迟，挑最快的写回 hosts
-rem        域名清单与 macOS 版一致（cloud / *-lobby / *-match / cos-dev / 官网）。
+rem        覆盖三类域名：下载 CDN（cloud、腾讯云文件 CDN）、游戏大厅/匹配网关、
+rem        以及官网 / 启动器 API / 登录鉴权（后两类在国内被污染成 0.0.0.1 或 127.0.0.1）。
 rem
 rem  用法（双击运行也行，会自动请求管理员权限）：
 rem      fix-nikke-hosts.bat                 体检 + 优化（默认含游戏网关）
@@ -93,21 +94,31 @@ $HostsPath = if ($env:NIKKE_HOSTS_PATH) { $env:NIKKE_HOSTS_PATH }
              else { Join-Path $env:SystemRoot 'System32\drivers\etc\hosts' }
 $Marker = '#UHE_'
 
-# 域名清单：cdn = 可换节点（下载 CDN）；gateway = 游戏网关；plain = 只体检
+# 域名清单：cdn 下载 CDN / gateway 游戏网关 / web 官网 API / auth 登录鉴权 /
+#           plain 只在缺失或失效时补（除 plain 外都可优化）
 $Domains = @(
-    [pscustomobject]@{ Name = 'cloud.nikke-kr.com';        Kind = 'cdn'     }
-    [pscustomobject]@{ Name = 'global-lobby.nikke-kr.com'; Kind = 'gateway' }
-    [pscustomobject]@{ Name = 'global-match.nikke-kr.com'; Kind = 'gateway' }
-    [pscustomobject]@{ Name = 'jp-lobby.nikke-kr.com';     Kind = 'gateway' }
-    [pscustomobject]@{ Name = 'jp-match.nikke-kr.com';     Kind = 'gateway' }
-    [pscustomobject]@{ Name = 'kr-lobby.nikke-kr.com';     Kind = 'gateway' }
-    [pscustomobject]@{ Name = 'kr-match.nikke-kr.com';     Kind = 'gateway' }
-    [pscustomobject]@{ Name = 'sea-lobby.nikke-kr.com';    Kind = 'gateway' }
-    [pscustomobject]@{ Name = 'sea-match.nikke-kr.com';    Kind = 'gateway' }
-    [pscustomobject]@{ Name = 'hmt-lobby.nikke-kr.com';    Kind = 'gateway' }
-    [pscustomobject]@{ Name = 'hmt-match.nikke-kr.com';    Kind = 'gateway' }
-    [pscustomobject]@{ Name = 'cos-dev.nikke-kr.com';      Kind = 'plain'   }
-    [pscustomobject]@{ Name = 'nikke-kr.com';              Kind = 'plain'   }
+    [pscustomobject]@{ Name = 'cloud.nikke-kr.com';                            Kind = 'cdn' }
+    [pscustomobject]@{ Name = 'global-lobby.nikke-kr.com';                     Kind = 'gateway' }
+    [pscustomobject]@{ Name = 'global-match.nikke-kr.com';                     Kind = 'gateway' }
+    [pscustomobject]@{ Name = 'jp-lobby.nikke-kr.com';                         Kind = 'gateway' }
+    [pscustomobject]@{ Name = 'jp-match.nikke-kr.com';                         Kind = 'gateway' }
+    [pscustomobject]@{ Name = 'kr-lobby.nikke-kr.com';                         Kind = 'gateway' }
+    [pscustomobject]@{ Name = 'kr-match.nikke-kr.com';                         Kind = 'gateway' }
+    [pscustomobject]@{ Name = 'sea-lobby.nikke-kr.com';                        Kind = 'gateway' }
+    [pscustomobject]@{ Name = 'sea-match.nikke-kr.com';                        Kind = 'gateway' }
+    [pscustomobject]@{ Name = 'hmt-lobby.nikke-kr.com';                        Kind = 'gateway' }
+    [pscustomobject]@{ Name = 'hmt-match.nikke-kr.com';                        Kind = 'gateway' }
+    [pscustomobject]@{ Name = 'cos-dev.nikke-kr.com';                          Kind = 'plain' }
+    [pscustomobject]@{ Name = 'nikke-kr.com';                                  Kind = 'web' }
+    [pscustomobject]@{ Name = 'nikke-en.com';                                  Kind = 'web' }
+    [pscustomobject]@{ Name = 'nikke-jp.com';                                  Kind = 'web' }
+    [pscustomobject]@{ Name = 'www.jupiterlauncher.com';                       Kind = 'api' }
+    [pscustomobject]@{ Name = 'na.fleetlogd.com';                              Kind = 'api' }
+    [pscustomobject]@{ Name = 'pass.levelinfinite.com';                        Kind = 'auth' }
+    [pscustomobject]@{ Name = 'aws-na.intlgame.com';                           Kind = 'auth' }
+    [pscustomobject]@{ Name = 'sg-vas.intlgame.com';                           Kind = 'auth' }
+    [pscustomobject]@{ Name = 'li-sg.intlgame.com';                            Kind = 'auth' }
+    [pscustomobject]@{ Name = 'sg-gamenative001-1300342648.file.myqcloud.com'; Kind = 'cdn' }
 )
 
 # 用于"模拟各地区解析"的网段（不必精确，能代表该地区即可）
@@ -455,7 +466,7 @@ foreach ($d in $Domains) {
 
     if ($doWrite) {
         $allowed = $true
-        if ($d.Kind -eq 'gateway' -and $CdnOnly) { $allowed = $false }
+        if ($d.Kind -ne 'cdn' -and $CdnOnly) { $allowed = $false }
         if ($allowed) {
             Write-Host ("   -> 写入 {0}（{1}）" -f $best, $why)
             if ($DryRun) {
@@ -466,7 +477,7 @@ foreach ($d in $Domains) {
         } elseif (-not $pinOk) {
             Write-Host '   ! 现值不可达，但当前是 --cdn-only；请去掉该参数重跑以修复'
         } else {
-            Write-Host '   （网关类；如只想动 CDN 类请加 --cdn-only）'
+            Write-Host ("   （{0} 类；--cdn-only 下只写下载 CDN）" -f $d.Kind)
         }
     } elseif ($best -and $best -eq $pin) {
         Write-Host '   （现值已是最快，无需改动）'
