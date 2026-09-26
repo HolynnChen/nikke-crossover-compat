@@ -15,11 +15,14 @@ described here.
 | Mac | Apple Silicon (verified on an **M4 Pro**) |
 | macOS | **26.6.2** |
 | CrossOver | **26.1**, with Rosetta installed |
-| Game | NIKKE PC International (**152.8.13 verified**); already installed, with the official launcher opening and able to log in |
+| Game | the NIKKE PC International installer (**152.8.13 verified**) -- you download the client yourself; this project has no direct link for it |
 | Build tools | Xcode Command Line Tools, Python 3, Bison 3, MinGW-w64 |
 
 This repository ships source only; it contains no game, ACE files, CrossOver binaries or account
 data.
+
+> If NIKKE is already installed and its official launcher opens and logs in, skip the game
+> installation and do only the patching part.
 
 ## Installing
 

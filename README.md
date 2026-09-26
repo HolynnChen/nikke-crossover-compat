@@ -14,10 +14,12 @@
 | Mac | Apple Silicon（已在 **M4 Pro** 上验证）|
 | macOS | **26.6.2** |
 | CrossOver | **26.1**，Rosetta 已安装 |
-| 游戏 | NIKKE PC 国际服（**152.8.13 已验证**）；已装好，且官方启动器能打开、能登录 |
+| 游戏 | NIKKE PC 国际服安装包（**152.8.13 已验证**）—— 客户端需你自行下载，本项目不提供直链 |
 | 构建依赖 | Xcode Command Line Tools、Python 3、Bison 3、MinGW-w64 |
 
 本仓库只提供源码，不含游戏、ACE 文件、CrossOver 二进制或账号数据。
+
+> 已经装好 NIKKE、官方启动器能打开能登录的话，跳过与安装游戏有关的步骤，只做打补丁那部分即可。
 
 ## 安装
 
