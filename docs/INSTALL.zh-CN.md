@@ -92,6 +92,7 @@ scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" \
     ~/Downloads/NIKKE.PC_Offcial_GL_152.8.13.exe
 ```
 
+这一步用的还是 2.2 那个脚本：前缀已经存在，它会跳过创建，只运行安装包。
 按安装程序提示完成，安装路径保持默认 `C:\NIKKE\Launcher`。
 
 ### 2.4 首次启动，让游戏下载资源

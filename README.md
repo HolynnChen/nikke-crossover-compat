@@ -38,7 +38,7 @@ python3 scripts/prepare_runtime.py \
 
 ```sh
 # 4. 创建前缀并安装游戏（不需要打开 CrossOver 界面，也不会建 CrossOver 容器）
-scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine"
+#    第二个参数是游戏安装包；省略它就只创建前缀，之后再单独跑安装包
 scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" <安装包.exe>
 ```
 

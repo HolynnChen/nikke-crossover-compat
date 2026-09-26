@@ -40,7 +40,7 @@ python3 scripts/prepare_runtime.py \
 
 ```sh
 # 4. create the prefix and install the game (no CrossOver GUI, no CrossOver bottle)
-scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine"
+#    the second argument is the game's installer; omit it to only create the prefix
 scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" <installer.exe>
 ```
 

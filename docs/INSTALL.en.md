@@ -90,7 +90,9 @@ scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" \
     ~/Downloads/NIKKE.PC_Offcial_GL_152.8.13.exe
 ```
 
-Follow the installer, keeping the default install path `C:\NIKKE\Launcher`.
+This uses the same script as 2.2: the prefix already exists, so it skips creation and
+only runs the installer. Follow the installer, keeping the default install path
+`C:\NIKKE\Launcher`.
 
 ### 2.4 First launch -- let it download assets
 
