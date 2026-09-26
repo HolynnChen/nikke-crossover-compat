@@ -122,6 +122,22 @@ def main():
     with (target / "build-ntdll.log").open("w") as log:
         subprocess.run(["make", "-j8", NTDLL_TARGET], cwd=build, env=unix_env,
                        stdout=log, stderr=subprocess.STDOUT, check=True)
+    # lsass.exe is built as a console application, but this project registers it
+    # as the WineLsassCompat service, so Wine allocates a console for it at
+    # session start and a conhost.exe window appears -- one that outlives the
+    # launcher, because it belongs to the service rather than to the launcher.
+    # Flipping the PE subsystem to GUI removes the window and matches how Wine's
+    # own daemons are built; the service itself keeps running unchanged.
+    lsass = build / "programs/lsass/x86_64-windows/lsass.exe"
+    if lsass.is_file():
+        data = bytearray(lsass.read_bytes())
+        pe = int.from_bytes(data[0x3C:0x40], "little")
+        if data[pe:pe + 4] != b"PE\0\0":
+            raise ValueError(f"unexpected PE signature in {lsass}")
+        subsystem_at = pe + 24 + 68
+        if int.from_bytes(data[subsystem_at:subsystem_at + 2], "little") != 2:
+            data[subsystem_at:subsystem_at + 2] = (2).to_bytes(2, "little")
+            lsass.write_bytes(data)
     for name, directory in MODULES.items():
         result = build / directory / "x86_64-windows" / name
         print(f"{name}: {hashlib.sha256(result.read_bytes()).hexdigest()}")

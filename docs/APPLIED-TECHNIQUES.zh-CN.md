@@ -33,7 +33,7 @@ LOCAL_ONLY.txt                            ← 说明文件
 | `x86_64-unix/ntdll.so` | `ae6489f07e27c0ddbf541d2db82446c9` | `rosetta-multibyte-nop` | 在用（必要性未隔离） |
 | `x86_64-windows/mfplat.dll` | `9e05b449b0042c1828db913def2a1bcc` | `mf-software` | 在用 |
 | `x86_64-windows/mfreadwrite.dll` | `1d3509c2e55d5581fc2e26426b1fe440` | `mf-software` | 在用 |
-| `x86_64-windows/lsass.exe` | `3410c261f87e9d36ba1614d883b9e824` | `src/lsass.c` | 在用（已注册 RunServices） |
+| `x86_64-windows/lsass.exe` | `b09816da5eb8d431c748f7709ef7b390` | `src/lsass.c` | 在用（已注册 RunServices）。**PE 子系统已由 CONSOLE 改为 GUI** —— 否则 Wine 会为这个服务分配控制台，导致每次启动都弹出一个不随启动器关闭的 conhost 窗口 |
 | `x86_64-windows/ntdll.dll` | 见 5.2 | `chromium-flags` | 在用（CEF 渲染补丁，且是 `.so` 的配对件） |
 
 **`ntoskrnl.exe` 是唯一被证明"去掉就进不去"的文件。** 依据：打上内核态

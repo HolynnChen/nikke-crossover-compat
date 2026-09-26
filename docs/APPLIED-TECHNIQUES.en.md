@@ -36,7 +36,7 @@ whole thing.
 | `x86_64-unix/ntdll.so` | `ae6489f07e27c0ddbf541d2db82446c9` | `rosetta-multibyte-nop` | in use (necessity not isolated) |
 | `x86_64-windows/mfplat.dll` | `9e05b449b0042c1828db913def2a1bcc` | `mf-software` | in use |
 | `x86_64-windows/mfreadwrite.dll` | `1d3509c2e55d5581fc2e26426b1fe440` | `mf-software` | in use |
-| `x86_64-windows/lsass.exe` | `3410c261f87e9d36ba1614d883b9e824` | `src/lsass.c` | in use (RunServices entry) |
+| `x86_64-windows/lsass.exe` | `b09816da5eb8d431c748f7709ef7b390` | `src/lsass.c` | In use (RunServices entry). **Its PE subsystem is changed from CONSOLE to GUI** -- otherwise Wine allocates a console for this service and every launch pops up a conhost window that outlives the launcher |
 | `x86_64-windows/ntdll.dll` | see 5.2 | `chromium-flags` | in use (CEF render patch, and the `.so`'s pair) |
 
 **`ntoskrnl.exe` is the only file proven to be load-bearing.** Before the

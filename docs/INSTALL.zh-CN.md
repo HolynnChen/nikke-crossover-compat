@@ -210,7 +210,7 @@ md5 -q "$RUNTIME/lib/wine/x86_64-unix/ntdll.so"
 ntoskrnl.exe     553a755df4792272d091168c7a4ac189
 mfplat.dll       9e05b449b0042c1828db913def2a1bcc
 mfreadwrite.dll  1d3509c2e55d5581fc2e26426b1fe440
-lsass.exe        3410c261f87e9d36ba1614d883b9e824
+lsass.exe        b09816da5eb8d431c748f7709ef7b390
 ntdll.so         ae6489f07e27c0ddbf541d2db82446c9   （必须是 x86_64）
 ```
 
