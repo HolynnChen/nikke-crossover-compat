@@ -115,7 +115,7 @@ curl -LO https://media.codeweavers.com/pub/crossover/source/crossover-sources-26
 ```sh
 python3 scripts/build_wine_modules.py \
     --archive "$PWD/crossover-sources-26.1.0.tar.gz" \
-    --output local/wine-modules-0.2.0
+    --output local/wine-modules
 ```
 
 这个脚本会按顺序应用以下补丁：
@@ -135,7 +135,7 @@ python3 scripts/build_wine_modules.py \
 ```sh
 python3 scripts/prepare_runtime.py \
     --output local/runtime-modules \
-    --modules local/wine-modules-0.2.0/build
+    --modules local/wine-modules/build
 ```
 
 这一步除覆盖 5 个补丁模块外，还会把 **DXVK** 放进视图，并把视图里 `lsass.exe` 的 PE
@@ -212,7 +212,7 @@ done
 md5 -q "$RUNTIME/lib/wine/x86_64-unix/ntdll.so"
 ```
 
-本机验证值（0.4.0）：
+本机验证值：
 
 ```
 ntoskrnl.exe     553a755df4792272d091168c7a4ac189
@@ -375,11 +375,11 @@ curl -LO https://media.codeweavers.com/pub/crossover/source/crossover-sources-26
 
 python3 scripts/build_wine_modules.py \
     --archive "$PWD/crossover-sources-26.1.0.tar.gz" \
-    --output local/wine-modules-0.2.0
+    --output local/wine-modules
 
 python3 scripts/prepare_runtime.py \
     --output local/runtime-modules \
-    --modules local/wine-modules-0.2.0/build
+    --modules local/wine-modules/build
 
 PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
 RUNTIME="$PWD/local/runtime-modules"

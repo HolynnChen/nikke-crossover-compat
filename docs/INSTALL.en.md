@@ -108,7 +108,7 @@ curl -LO https://media.codeweavers.com/pub/crossover/source/crossover-sources-26
 ```sh
 python3 scripts/build_wine_modules.py \
     --archive "$PWD/crossover-sources-26.1.0.tar.gz" \
-    --output local/wine-modules-0.2.0
+    --output local/wine-modules
 ```
 
 Patches applied, in order:
@@ -129,7 +129,7 @@ build on mismatch.
 ```sh
 python3 scripts/prepare_runtime.py \
     --output local/runtime-modules \
-    --modules local/wine-modules-0.2.0/build
+    --modules local/wine-modules/build
 ```
 
 Besides the five patched modules, this step places **DXVK** into the view and flips the
@@ -205,7 +205,7 @@ done
 md5 -q "$RUNTIME/lib/wine/x86_64-unix/ntdll.so"
 ```
 
-Reference values (0.4.0):
+Reference values :
 
 ```
 ntoskrnl.exe     553a755df4792272d091168c7a4ac189
@@ -372,11 +372,11 @@ curl -LO https://media.codeweavers.com/pub/crossover/source/crossover-sources-26
 
 python3 scripts/build_wine_modules.py \
     --archive "$PWD/crossover-sources-26.1.0.tar.gz" \
-    --output local/wine-modules-0.2.0
+    --output local/wine-modules
 
 python3 scripts/prepare_runtime.py \
     --output local/runtime-modules \
-    --modules local/wine-modules-0.2.0/build
+    --modules local/wine-modules/build
 
 PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
 RUNTIME="$PWD/local/runtime-modules"
