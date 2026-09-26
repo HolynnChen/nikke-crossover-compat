@@ -1,5 +1,13 @@
 # Validation — 2026-09-22
 
+> **Note on environments.** The header below describes where the original work was
+> validated: an M4 Max on macOS 27.0 against NIKKE 152.8.11. Entries dated
+> 2026-09-26 were made on a different machine -- **Apple M4 Pro, macOS 26.6.2,
+> CrossOver 26.1, NIKKE 152.8.13** -- using the same project. Where a result depends
+> on the environment, the entry says which one it came from. The cross-machine
+> difference is real: a conclusion that holds on one build has twice turned out not
+> to hold here, both times recorded below.
+
 ## Current result and provenance
 
 Target: NIKKE.PC_Official_GL_152.8.11 (Global), Apple M4 Max,
