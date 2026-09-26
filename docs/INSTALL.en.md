@@ -93,7 +93,7 @@ result; `prefix created` means it worked.
 
 ```sh
 scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" \
-    ~/Downloads/NIKKE.PC_Offcial_GL_152.8.13.exe
+    ~/Downloads/NIKKE.PC_Offcial_GL_<version>.exe
 ```
 
 This uses the same script as 2.2: the prefix already exists, so it skips creation and

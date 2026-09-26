@@ -1,7 +1,7 @@
 #!/bin/sh
 # One command to build the compatibility patches and set NIKKE up.
 #
-#   scripts/install_all.sh --installer ~/Downloads/NIKKE.PC_Offcial_GL_152.8.13.exe
+#   scripts/install_all.sh --installer ~/Downloads/NIKKE.PC_Offcial_GL_<version>.exe
 #
 # What it automates
 #   1. checks the prerequisites

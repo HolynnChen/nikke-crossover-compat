@@ -14,7 +14,7 @@
 | Mac | Apple Silicon（已在 **M4 Pro** 上验证）|
 | macOS | **26.6.2** |
 | CrossOver | **26.1**，Rosetta 已安装 |
-| 游戏 | NIKKE PC 国际服 **152.8.13**，已装好且官方启动器能打开、能登录 |
+| 游戏 | NIKKE PC 国际服（**152.8.13 已验证**）；已装好，且官方启动器能打开、能登录 |
 | 构建依赖 | Xcode Command Line Tools、Python 3、Bison 3、MinGW-w64 |
 
 本仓库只提供源码，不含游戏、ACE 文件、CrossOver 二进制或账号数据。
@@ -24,7 +24,7 @@
 **一条命令装完（推荐）：**
 
 ```sh
-scripts/install_all.sh --installer ~/Downloads/NIKKE.PC_Offcial_GL_152.8.13.exe
+scripts/install_all.sh --installer ~/Downloads/NIKKE.PC_Offcial_GL_<版本>.exe
 ```
 
 它会依次检查依赖 → 下载并校验 CrossOver 源码包 → 构建 macOS 层 → 构建 Wine 补丁模块

@@ -95,7 +95,7 @@ scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine"
 
 ```sh
 scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" \
-    ~/Downloads/NIKKE.PC_Offcial_GL_152.8.13.exe
+    ~/Downloads/NIKKE.PC_Offcial_GL_<版本>.exe
 ```
 
 这一步用的还是 2.2 那个脚本：前缀已经存在，它会跳过创建，只运行安装包。

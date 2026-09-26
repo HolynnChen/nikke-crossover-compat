@@ -15,7 +15,7 @@ described here.
 | Mac | Apple Silicon (verified on an **M4 Pro**) |
 | macOS | **26.6.2** |
 | CrossOver | **26.1**, with Rosetta installed |
-| Game | NIKKE PC International **152.8.13**, already installed, with the official launcher opening and able to log in |
+| Game | NIKKE PC International (**152.8.13 verified**); already installed, with the official launcher opening and able to log in |
 | Build tools | Xcode Command Line Tools, Python 3, Bison 3, MinGW-w64 |
 
 This repository ships source only; it contains no game, ACE files, CrossOver binaries or account
@@ -26,7 +26,7 @@ data.
 **One command (recommended):**
 
 ```sh
-scripts/install_all.sh --installer ~/Downloads/NIKKE.PC_Offcial_GL_152.8.13.exe
+scripts/install_all.sh --installer ~/Downloads/NIKKE.PC_Offcial_GL_<version>.exe
 ```
 
 It checks prerequisites, downloads and verifies the CrossOver source archive, builds the macOS
