@@ -44,11 +44,14 @@ Bison defaults to `/opt/homebrew/opt/bison/bin/bison`; override with `--bison`.
 ### Path conventions
 
 ```
-repo        ~/work/nikke-crossover-compat
+repo        /path/to/nikke-crossover-compat
 Wine prefix ~/Library/Application Support/NIKKE-Wine
 build       <repo>/local/runtime-modules
 launcher    ~/Applications/NIKKE Wine.app
 ```
+
+> Below, `/path/to/nikke-crossover-compat` stands for wherever you cloned this
+> repository; substitute your own path.
 
 ---
 
@@ -109,7 +112,7 @@ Run everything from the repository root.
 ### 3.1 Build the native compatibility layer
 
 ```sh
-cd ~/work/nikke-crossover-compat
+cd /path/to/nikke-crossover-compat
 make
 make test
 ```
@@ -276,7 +279,7 @@ The app is self-contained (the Wine loader lives inside it) and calls
 DXVK, and the d3d native overrides). Equivalent from a shell:
 
 ```sh
-cd ~/work/nikke-crossover-compat && scripts/launch_nikke.sh
+cd /path/to/nikke-crossover-compat && scripts/launch_nikke.sh
 ```
 
 > If you created a separate bottle per [4.2](#42-option-b--separate-bottle) you can also
@@ -302,7 +305,7 @@ Let the official launcher download the update itself.
 ### 7.2 Update the compatibility patches (if the new version needs it)
 
 ```sh
-cd ~/work/nikke-crossover-compat
+cd /path/to/nikke-crossover-compat
 git pull
 git checkout <new-branch>
 
@@ -386,7 +389,7 @@ Enable **High Resolution Mode** for the bottle in CrossOver and restart it.
 ## Appendix — full command sequence
 
 ```sh
-cd ~/work/nikke-crossover-compat
+cd /path/to/nikke-crossover-compat
 make && make test
 
 curl -LO https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.1.0.tar.gz

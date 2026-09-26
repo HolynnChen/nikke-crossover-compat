@@ -51,11 +51,13 @@ Bison 默认路径为 `/opt/homebrew/opt/bison/bin/bison`，
 本指南使用以下路径（可按需替换）：
 
 ```
-仓库      ~/work/nikke-crossover-compat
+仓库      /path/to/nikke-crossover-compat
 Wine 前缀 ~/Library/Application Support/NIKKE-Wine
 构建产物  <仓库>/local/runtime-modules
 启动入口  ~/Applications/NIKKE Wine.app
 ```
+
+> 下文用 `/path/to/nikke-crossover-compat` 表示你克隆本仓库的位置，请按实际路径替换。
 
 ---
 
@@ -109,7 +111,7 @@ scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" \
 ### 3.1 构建原生兼容层
 
 ```sh
-cd ~/work/nikke-crossover-compat
+cd /path/to/nikke-crossover-compat
 make
 make test
 ```
@@ -275,7 +277,7 @@ python3 scripts/test_wine_modules.py \
 脚本默认值就是已验证配置（两个 MF 开关、DXVK 与 d3d native 覆盖）。等价命令行：
 
 ```sh
-cd ~/work/nikke-crossover-compat && scripts/launch_nikke.sh
+cd /path/to/nikke-crossover-compat && scripts/launch_nikke.sh
 ```
 
 > 若按 [4.2](#42-方式-b创建独立容器) 建了独立容器，也可以从 CrossOver 菜单进入；
@@ -298,7 +300,7 @@ cd ~/work/nikke-crossover-compat && scripts/launch_nikke.sh
 ### 7.2 更新兼容补丁（如果新版本需要）
 
 ```sh
-cd ~/work/nikke-crossover-compat
+cd /path/to/nikke-crossover-compat
 git pull
 git checkout <新分支>
 
@@ -383,7 +385,7 @@ ERR( "KeBugCheck %lx called from %p\n", code, __builtin_return_address(0) );
 
 ```sh
 # 一次性全流程
-cd ~/work/nikke-crossover-compat
+cd /path/to/nikke-crossover-compat
 make && make test
 
 curl -LO https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.1.0.tar.gz
