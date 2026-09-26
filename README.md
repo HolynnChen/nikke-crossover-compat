@@ -117,6 +117,25 @@ cd <本仓库> && scripts/launch_nikke.sh
 - **每次启动弹出黑窗口且关不掉**：`lsass.exe` 的子系统没改，或只改了一层。
 - **启动器黑屏**：确认用的是本仓库的启动方式，不是 CrossOver 自己的菜单入口。
 
+## 可选：网络加速（国内）
+
+NIKKE 的多个域名在国内**解析被污染**（`0.0.0.0` / `0.0.0.1` / `127.0.0.1`），不写 hosts 根本连不上；
+而同一个域名的不同 CDN 节点之间速度差距很大（实测 28 ms 与 373 ms 并存）。
+
+仓库里有两个脚本，用同一套方法自动体检并挑最快节点：
+
+```bash
+sudo bash scripts/fix-nikke-hosts.sh              # macOS；默认优化 CDN + 游戏网关
+sudo bash scripts/fix-nikke-hosts.sh --dry-run    # 先预览，不改 hosts（不需要 root）
+sudo bash scripts/fix-nikke-hosts.sh --cdn-only   # 只动下载 CDN，网关只体检
+```
+
+Windows 用户直接双击 `scripts/fix-nikke-hosts.bat`（会自动请求管理员权限）。
+
+做法：用 Google DoH 的 EDNS Client Subnet 模拟从多个地区解析域名，拿到各地区会得到的 IP，
+再从本机实测延迟（ICMP 优先；不回 ICMP 的退回 TLS 握手，同时校验证书），挑最快的写回 hosts。
+全程并发，一次跑完约 12–30 秒。脚本会先备份 hosts 到同目录，跑完请进游戏确认能正常登录。
+
 ## 已知限制
 
 - **GPU 视频直通做不到。** Unity 的 Media Foundation 路径需要 DXGI device manager，

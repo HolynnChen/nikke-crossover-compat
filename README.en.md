@@ -127,6 +127,27 @@ See [troubleshooting in the install guide](docs/INSTALL.en.md#8-troubleshooting)
 - **Launcher black screen**: make sure you launched through this repository's entry, not
   CrossOver's own menu entry.
 
+## Optional: network acceleration (China)
+
+Several NIKKE domains are DNS-poisoned in China (`0.0.0.0` / `0.0.0.1` / `127.0.0.1`), so without
+hosts entries they do not resolve at all -- and the CDN nodes behind one name differ wildly
+(28 ms and 373 ms were both measured).
+
+Two scripts do the same thing: check what is already pinned, then find and apply the fastest node.
+
+```bash
+sudo bash scripts/fix-nikke-hosts.sh              # macOS: CDN and game gateways
+sudo bash scripts/fix-nikke-hosts.sh --dry-run    # preview only, needs no root
+sudo bash scripts/fix-nikke-hosts.sh --cdn-only   # CDN only; gateways are checked, not written
+```
+
+On Windows, run `scripts/fix-nikke-hosts.bat` (it asks for administrator rights itself).
+
+They resolve each domain through Google DoH with EDNS Client Subnet to learn the answer other
+regions receive, measure those candidates from this machine (ICMP first, TLS handshake with
+certificate validation as a fallback), and write the fastest one into hosts. Everything runs
+concurrently -- roughly 12-30 seconds in total. The current hosts file is backed up first.
+
 ## Known limits
 
 - **GPU video pass-through is not achievable.** Unity's Media Foundation path needs a DXGI device
