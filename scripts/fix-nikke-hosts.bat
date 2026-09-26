@@ -95,7 +95,7 @@ $HostsPath = if ($env:NIKKE_HOSTS_PATH) { $env:NIKKE_HOSTS_PATH }
 $Marker = '#UHE_'
 
 # 域名清单：cdn 下载 CDN / gateway 游戏网关 / web 官网 API / auth 登录鉴权 /
-#           plain 只在缺失或失效时补（除 plain 外都可优化）
+#           plain 只保命不加速（保留备用；目前没有域名使用）
 $Domains = @(
     [pscustomobject]@{ Name = 'cloud.nikke-kr.com';                            Kind = 'cdn' }
     [pscustomobject]@{ Name = 'global-lobby.nikke-kr.com';                     Kind = 'gateway' }
@@ -108,7 +108,7 @@ $Domains = @(
     [pscustomobject]@{ Name = 'sea-match.nikke-kr.com';                        Kind = 'gateway' }
     [pscustomobject]@{ Name = 'hmt-lobby.nikke-kr.com';                        Kind = 'gateway' }
     [pscustomobject]@{ Name = 'hmt-match.nikke-kr.com';                        Kind = 'gateway' }
-    [pscustomobject]@{ Name = 'cos-dev.nikke-kr.com';                          Kind = 'plain' }
+    [pscustomobject]@{ Name = 'cos-dev.nikke-kr.com';                          Kind = 'api' }
     [pscustomobject]@{ Name = 'nikke-kr.com';                                  Kind = 'web' }
     [pscustomobject]@{ Name = 'nikke-en.com';                                  Kind = 'web' }
     [pscustomobject]@{ Name = 'nikke-jp.com';                                  Kind = 'web' }
@@ -475,7 +475,7 @@ foreach ($d in $Domains) {
                 $wanted[$domain] = $best
             }
         } elseif (-not $pinOk) {
-            Write-Host '   ! 现值不可达，但当前是 --cdn-only；请去掉该参数重跑以修复'
+            Write-Host '   ! 该域名当前不可用（未 pin 或现值失效），但当前是 --cdn-only；请去掉该参数重跑'
         } else {
             Write-Host ("   （{0} 类；--cdn-only 下只写下载 CDN）" -f $d.Kind)
         }

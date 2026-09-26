@@ -13,7 +13,7 @@
 # 它做什么
 #   1) 体检：逐个检查 hosts 里已 pin 的域名是否还能连通（TCP+TLS）
 #   2) 选优：对 CDN 类域名，从多个地区的解析结果里挑当前最快的节点
-#   3) 默认除 plain 外都写入（cdn/gateway/web/api/auth）；--cdn-only 只动下载 CDN
+#   3) 默认全部写入（当前无 plain 类域名）；--cdn-only 只动下载 CDN
 #      （网关类改动会影响能否登录，写入后请进游戏确认；--dry-run 可先预览）
 #
 # ★ 候选 IP 怎么来
@@ -56,7 +56,7 @@ sea-lobby.nikke-kr.com:gateway
 sea-match.nikke-kr.com:gateway
 hmt-lobby.nikke-kr.com:gateway
 hmt-match.nikke-kr.com:gateway
-cos-dev.nikke-kr.com:plain
+cos-dev.nikke-kr.com:api
 nikke-kr.com:web
 nikke-en.com:web
 nikke-jp.com:web
@@ -272,7 +272,7 @@ for entry in $DOMAINS; do
                     fi
                 else
                     if [ "$pin_ok" -eq 0 ]; then
-                        printf '   ⚠ 现值不可达，但当前是 --cdn-only；请去掉该参数重跑以修复\n'
+                        printf '   ⚠ 该域名当前不可用（未 pin 或现值失效），但当前是 --cdn-only；请去掉该参数重跑\n'
                     else
                         printf '   （%s 类；--cdn-only 下只写下载 CDN）\n' "$kind" 
                     fi
