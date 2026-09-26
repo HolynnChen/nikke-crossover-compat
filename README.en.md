@@ -36,7 +36,9 @@ data.
 
 > **On upgrading to 26.3:** verified here at source level -- all **10 patches apply cleanly**
 > to 26.3 (`local/check-patches.sh`, in build order). 26.1 to 26.3 are bug-fix-only releases:
-> the Wine base is **11.0** in both, and DXVK is **v1.10.3** in both. The published runtime,
+> the Wine base is **11.0** in both, and DXVK is **v1.10.3** in both. Of the 11085 files in the
+> Wine tree only 12 differ, none of them a module this project replaces or a patch target, and
+> the DXVK/GStreamer/MoltenVK/vkd3d inventories are identical. The published runtime,
 > however, is built and tested against 26.1; upgrading means **rebuilding the modules from
 > 26.3's source too**, because more than 800 files in the view are symlinks into CrossOver and
 > an upgrade swaps them all. Note that from 26.2 CrossOver warns about 32-bit bottles, and this
