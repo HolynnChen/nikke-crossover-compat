@@ -1,152 +1,159 @@
 # NIKKE CrossOver Compatibility
 
-**Run the Windows PC version of GODDESS OF VICTORY: NIKKE on an Apple Silicon Mac through CrossOver.**
+**Running the Windows PC build of *Goddess of Victory: NIKKE* on Apple Silicon Macs through CrossOver.**
 
-[简体中文](README.md) · [Installation Guide](docs/INSTALL.en.md) · [What is actually applied](docs/APPLIED-TECHNIQUES.en.md) · [Validation](docs/VALIDATION.md) · [Architecture](docs/ARCHITECTURE.md) · [CEF render patch](docs/CHROMIUM-FLAGS.md)
+[中文](README.md) · [Install guide](docs/INSTALL.en.md) · [What is actually applied](docs/APPLIED-TECHNIQUES.en.md) · [Validation log](docs/VALIDATION.md) · [Architecture](docs/ARCHITECTURE.md) · [CEF rendering patch](docs/CHROMIUM-FLAGS.md)
 
-This experimental patch set addresses startup compatibility problems, missing Wine APIs, and black background videos observed while running NIKKE. It also installs a persistent launcher entry inside CrossOver.
+A Wine compatibility patch set for NIKKE: it fixes failing to get in, story scenes
+hanging, low frame rate, and a stray console window. Every claim here comes from
+measurements on the machine described below; conclusions that turned out to be wrong
+are kept, with their corrections, in the [validation log](docs/VALIDATION.md).
 
-**For exactly which five files the current runtime replaces, and the evidence behind each, see [What is actually applied](docs/APPLIED-TECHNIQUES.en.md).**
+## Verified environment
 
-**2026-09-26 update: found the real root cause of the startup failure on Apple silicon — Rosetta 2 cannot translate the register form of the `0F 1F` NOP, which broke both ACE's kernel driver and Unity's IL2CPP.** See the [update notes](docs/UPDATE-2026-09-26.en.md).
+| | Measured |
+|---|---|
+| Model / chip | Mac16,7 / **Apple M4 Pro** |
+| macOS | **26.6.2** (25G83) |
+| CrossOver | **26.1** |
+| NIKKE PC International | **152.8.13** |
+| Prefix | `~/Library/Application Support/NIKKE-Wine` |
 
-**2026-09-23 update: ACE kernel exports completed, full installation guide added.** See the [update notes](docs/UPDATE-2026-09-23.en.md).
+Other hardware, CrossOver versions and later game updates are untested.
 
-**2026-09-22 update: compatibility work for NIKKE PC Global 152.8.11.** On Apple Silicon with CrossOver 26.1, the user confirmed lobby access, combat and a tower run. After restoring the playable configuration, the user again confirmed responsive lobby navigation. Background animation worked and frame rate felt normal.
+## What it fixes
 
-This is the **0.4.0 experimental source update**: it fixes the multi-byte NOP Rosetta cannot translate (one root cause behind both the ACE kernel driver and IL2CPP) and adds the 10 stubs ACE's CORE drivers need. See the [0.4.0 notes](docs/UPDATE-2026-09-26.en.md), [0.3.0 notes](docs/UPDATE-2026-09-23.en.md) and [0.2.0 notes](docs/UPDATE-2026-09-22.en.md).
+**1. Launcher black screen / cannot get into the game**
+Root cause: Rosetta 2 cannot translate the **register form** of the multi-byte NOP
+(`0F 1F` with ModRM.mod = 3), which raises SIGILL and kills both ACE's kernel driver
+and Unity's IL2CPP. The fix is on the Wine side (ntoskrnl / ntdll). See
+[this update](docs/UPDATE-2026-09-26.en.md).
 
-## What does it address?
+**2. Hanging on entering a story scene**
+Root cause: the two Media Foundation switches must be **paired**. With only
+`NOP_BRIDGE_MF_NO_DXGI=1` the configuration is half-applied -- Unity cannot obtain a
+DXGI device manager and falls back to software, while the reader still expects D3D
+frames, so the video pipeline stalls once it starts: the process stays alive, one core
+spins at 103% CPU, and `Player.log` goes silent for minutes. Adding
+`NOP_BRIDGE_MF_SOFTWARE=1` makes story playback work.
 
-- **ACE anti-cheat startup failure:** implement 7 `ntoskrnl.exe` kernel exports that ACE calls but CrossOver does not provide (`KeTryToAcquireGuardedMutex`, `KeIpiGenericCall`, `PsGetCurrentThreadTeb`, and others). Without them the game refuses to start.
-- **Startup compatibility:** handle the register-NOP forms Rosetta rejects on the tested machine (the macOS-side `nop_bridge`, plus new ntoskrnl / ntdll emulation on the Wine side), correct privileged-instruction exception classification, and supply both several Wine kernel APIs used during startup and the stubs ACE's drivers import.
-- **Black background video:** expose an unsupported DXGI-video capability early enough for the application to take its software fallback.
-- **Repeatable launching:** keep the runtime in a persistent location and open the official NIKKE launcher from CrossOver's application list.
-- **Blurry graphics:** use CrossOver's High Resolution Mode in the separate bottle. The tested game's stored window size increased from 1388×781 to 2202×1340.
+**3. Low frame rate**
+Root cause: `CX_GRAPHICS_BACKEND=dxvk` **had never actually taken effect**. The runtime
+view sits on `WINEDLLPATH` and **shadows the prefix**, so Wine resolved the d3d dlls from
+the view to its builtins. Installing DXVK into the prefix plus a native override did not
+help either -- that loads the view's builtin PE under the native name. Materialising DXVK
+inside the view makes it genuinely load, with a clear frame-rate improvement.
 
-These are observed results for the tested configuration, not a universal fix for NIKKE errors or other games using ACE.
+**4. A conhost window on every launch that outlives the launcher**
+Root cause: this project's own `lsass.exe` is built as a console application and
+registered as a service, so Wine allocates a console for it. That window belongs to the
+service rather than to the launcher, which is why closing the launcher never closed it.
+Building it as a GUI application removes the window; the service is unaffected.
 
-## Requirements
+## Launching it
 
-The current tested environment is **Apple M4 Max, macOS 27.0, CrossOver 26.1, NIKKE Global 152.8.11**. Older records used macOS 26.6.2. Other hardware, CrossOver versions, and future game updates have not been verified.
+**Double-click `~/Applications/NIKKE Wine.app`, then press 启动.**
 
-You need:
+The app is self-contained (the Wine loader lives inside it) and calls
+`scripts/launch_nikke.sh`, whose defaults are the verified configuration:
 
-1. A working installation of CrossOver 26.1 and Rosetta.
-2. An existing CrossOver bottle with NIKKE for Windows installed. Its official launcher must already open and allow sign-in. The default launcher directory is `C:\NIKKE\Launcher`.
-3. Xcode Command Line Tools, Python 3, Bison 3, and MinGW-w64 to build the source.
-
-This repository contains source code only. It does not include game assets, ACE files, CrossOver binaries, or account data. The tested bottle already used [li-miniloader-wine-fix](https://github.com/Dorin130/li-miniloader-wine-fix) and a CEF launcher fix. This project does not install those dependencies. Fix the official launcher first if it cannot open.
-
-## Installation
-
-**Full steps are in the [Installation Guide](docs/INSTALL.en.md).** Summary below.
-
-Run these commands from the repository root. Completely close the source bottle's game, launcher, and background processes before copying it.
-
-### 1. Build the compatibility bridge
-
-```sh
-make
-make test
+```
+NOP_BRIDGE_MF_NO_DXGI / NOP_BRIDGE_MF_SOFTWARE = 1    story video does not hang
+CX_GRAPHICS_BACKEND = dxvk plus d3d9,d3d10,d3d10_1,d3d10core,d3d11=n,b    makes DXVK load
+NOP_BRIDGE_PRIVILEGED = 1
 ```
 
-### 2. Build the patched Wine modules
+Equivalent from a shell: `cd <repo> && scripts/launch_nikke.sh`
 
-Download the [official CrossOver 26.1 source archive](https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.1.0.tar.gz) from CodeWeavers, then run:
+> No CrossOver menu entry is used on this machine. `install_crossover_entry.py` is still
+> present for the flow that clones a separate bottle from a source bottle, but this setup
+> uses the prefix above plus the self-built launcher app.
+
+## Building
+
+Requires Xcode Command Line Tools, Python 3, Bison 3 and MinGW-w64.
 
 ```sh
+# 1. macOS side (the Rosetta NOP bridge)
+make && make test
+
+# 2. Download the official CrossOver 26.1 source archive
+#    https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.1.0.tar.gz
 python3 scripts/build_wine_modules.py \
     --archive /absolute/path/to/crossover-sources-26.1.0.tar.gz \
-    --output local/wine-modules-0.2.0
+    --output local/wine-modules
 
+# 3. Create the runtime view
+#    This overlays the five patched modules, materialises DXVK, and flips lsass.exe
+#    to the GUI subsystem.
 python3 scripts/prepare_runtime.py \
     --output local/runtime-modules \
-    --modules local/wine-modules-0.2.0/build
+    --modules local/wine-modules/build
 ```
 
-The builder includes the September changes, thread-owner API and minimal Wine `lsass.exe` component by default, and verifies a pinned SHA-256 before extracting the archive. Its default Bison path is `/opt/homebrew/opt/bison/bin/bison`; use `--bison` for another location.
+The step 3 output is **local only**: it holds absolute symlinks and third-party binaries.
+Do not publish it; regenerate it on each machine.
 
-### 3. Install a persistent CrossOver entry
-
-Replace `YOUR_NIKKE_BOTTLE` with the name of your existing NIKKE bottle:
+The launcher app is a thin shell and can be recreated at any time:
 
 ```sh
-python3 scripts/install_crossover_entry.py \
-    --source-prefix "$HOME/Library/Application Support/CrossOver/Bottles/YOUR_NIKKE_BOTTLE" \
-    --source-runtime local/runtime-modules \
-    --source-app build/NopBridgeLab.app \
-    --source-bridge build/libnop_bridge.dylib
+make                                   # produces build/NopBridgeLab.app with the Wine loader
+APP="$HOME/Applications/NIKKE Wine.app"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+printf '#!/bin/sh\nexec "%s/scripts/launch_nikke.sh" "$@"\n' "$PWD" > "$APP/Contents/MacOS/launch"
+chmod +x "$APP/Contents/MacOS/launch"
+cp build/NopBridgeLab.app/Contents/MacOS/wine_bootstrap "$APP/Contents/MacOS/nikke_wine"
+cp src/Info.plist "$APP/Contents/Info.plist"
 ```
 
-The installer creates a separate **NIKKE-Compatibility** bottle using APFS file clones, preserving downloaded resources. It keeps the original bottle and refuses to overwrite existing destinations. Copied sign-in state remains local.
+## What the runtime replaces
 
-The runtime lives under `~/Library/Application Support/NIKKE Compatibility` and depends on your existing CrossOver installation. Keep that directory; launching no longer depends on a temporary test directory.
+Five modules (`ntoskrnl.exe`, `mfplat.dll`, `mfreadwrite.dll`, `lsass.exe`, and the Unix
+`ntdll.so`), the PE `ntdll.dll` that pairs with it, and the DXVK dlls inside the view.
+Full hashes, the evidence for each file and the order of the ten patches are in
+[what is actually applied](docs/APPLIED-TECHNIQUES.en.md).
 
-## Updating an existing installation
+## Known limits
 
-A GitHub source update does not replace your local runtime automatically. Exit the old bottle, rebuild into new output directories, then use the following installation command, replacing the source bottle name:
+All measured, not assumed:
 
-```sh
-python3 scripts/install_crossover_entry.py \
-    --source-prefix "$HOME/Library/Application Support/CrossOver/Bottles/YOUR_NIKKE_BOTTLE" \
-    --source-runtime local/runtime-modules \
-    --source-app build/NopBridgeLab.app \
-    --source-bridge build/libnop_bridge.dylib \
-    --bottle-name NIKKE-Compatibility-152 \
-    --menu-name "NIKKE Compatibility 152" \
-    --support "$HOME/Library/Application Support/NIKKE Compatibility 152"
-```
+- **GPU video pass-through is not achievable.** Unity's Media Foundation path needs a DXGI
+  device manager, and **Wine's own `MFCreateDXGIDeviceManager` cannot supply one in this
+  environment** (the error context is literally `Context: Creating DXGIDeviceManager`).
+  Video frames therefore travel through system memory, costing one extra GPU-to-memory-to-GPU
+  copy per frame. This is also why the two switches in item 2 are **required**, independent of
+  the rendering backend -- switching to DXVK does not change it.
+- **The decode itself is still hardware.** The GStreamer pipeline uses `vtdec_hw`, a
+  VideoToolbox hardware-only element; only the frame handoff is on the CPU, so this is not
+  "decoding on the CPU".
+- **ACE CORE driver processes still record abnormal exits**, though they do not block the
+  game. That is not a statement that every anti-cheat component is healthy.
+- No long-run stability testing and no quantitative FPS measurement. CrossOver or game
+  updates may require re-adapting.
 
-Keep your original entry/runtime until the new one works. Installation configures the Wine system-process component inside the copied bottle; it does not change macOS services or the original bottle.
+## Pitfalls (read before changing anything)
 
-## Launching and resolution
+- **The view's `lib/wine/i386-windows` is a symlink back into CrossOver's own install.**
+  Running `rm` plus `cp` beneath it rewrites CrossOver itself -- this project damaged the
+  32-bit d3d dlls that way once. Check that a view directory is not such a link first.
+- **Never overwrite this project's `ntoskrnl.exe` with CrossOver's** -- the project's build
+  is a superset.
+- **Do not judge the backend from the environment variable.** Check which dlls actually
+  loaded and their sizes (DXVK's `d3d11.dll` is about 3165760 bytes, Wine's builtin about
+  425552).
+- **`build/wine_bootstrap` is a symlink created by `make`**, pointing at `build/NopBridgeLab.app/Contents/MacOS/wine_bootstrap`. Before `make` has run it is a **broken link**: `cat` prints nothing and `stat` reports 46 bytes (the length of the target path), so it looks like an empty file.
+- Watch what you search for in a binary: `CreateSharedHandle` is a COM vtable method
+  implemented in `d3d11.dll`, so grepping only `dxgi.dll` yields a false negative.
 
-Reopen CrossOver, then use:
+## Licence and credits
 
-**NIKKE-Compatibility → NIKKE Compatibility → Start Game in the official launcher**
+**LGPL-2.1-or-later**, see [LICENSE](LICENSE) and [THIRD_PARTY.md](THIRD_PARTY.md).
 
-For clearer graphics, enable **High Resolution Mode** in that bottle's sidebar and accept the bottle restart. You can customize the entry name with the installer's `--menu-name` option.
+The repository ships source only; it contains no game, ACE files, CrossOver binaries or
+account data. It neither modifies nor redistributes the game or ACE binaries, and it does
+not replace failing interface queries with fixed success values -- some interfaces still
+report unsupported.
 
-The dedicated launch profile uses the tested **DXVK** backend. Selecting another backend in CrossOver does not automatically change that profile; other backends require separate configuration and testing.
-
-## Known limitations
-
-- The current configuration is playable in the reported sessions, but two background ACE CORE driver processes still exit abnormally. Playability does not establish that all protection components/checks are healthy or that this configuration is officially supported.
-- **Never overwrite this project's `ntoskrnl.exe` with CrossOver's stock build — ours is a superset, and reverting makes ACE report `unimplemented function` and refuse to start.**
-- Temporary diagnostics and memory-snapshot code are excluded. Clean-build API tests and user gameplay reports are recorded separately. The new installation flow has not been verified end to end through combat; see [Validation](docs/VALIDATION.md).
-- Long sessions, quantitative FPS and every cutscene have not been tested. CrossOver or game updates may need further adaptation.
-
-The project modifies Wine compatibility behavior. It does not distribute or modify game/ACE binaries or replace failing API queries with fixed success values. Some APIs still explicitly report unsupported behavior.
-
-## Development and contributions
-
-Native regression tests:
-
-```sh
-make test
-```
-
-Windows/Wine API tests require a separate disposable test bottle:
-
-```sh
-python3 scripts/test_windows.py --prefix /absolute/path/to/test-bottle \
-    --runtime local/runtime-modules
-python3 scripts/test_wine_modules.py \
-    --prefix /absolute/path/to/test-bottle \
-    --runtime local/runtime-modules
-```
-
-Thread ownership, real process exit status, thread context and mapping-lifetime tests are included by default. To package source only:
-
-```sh
-python3 scripts/package_source.py
-```
-
-When reporting a problem, include your Mac model, macOS/CrossOver versions, graphics backend, and reproduction steps. Remove credentials, tokens, and account identifiers from any log excerpts.
-
-## License and credits
-
-Licensed under **LGPL-2.1-or-later**. See [LICENSE](LICENSE) and [Third-party provenance](THIRD_PARTY.md).
-
-Thanks to Wine, CodeWeavers, DW-Proton, Endfield_FineWine, and the earlier launcher-fix projects for their public work. NIKKE, CrossOver, and Rosetta belong to their respective rights holders. This is an independent community compatibility project.
+Thanks to Wine, CodeWeavers, DW-Proton, Endfield_FineWine and the earlier launcher-fix
+projects for their public work. NIKKE, CrossOver and Rosetta are products of their
+respective owners; this is independent community compatibility research.

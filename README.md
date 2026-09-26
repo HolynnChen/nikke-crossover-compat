@@ -1,152 +1,137 @@
 # NIKKE CrossOver Compatibility
 
-**让《胜利女神：NIKKE》Windows PC 版在 Apple Silicon Mac 上通过 CrossOver 运行。**
+**让《胜利女神：NIKKE》Windows PC 版在 Apple Silicon Mac 上通过 CrossOver 正常运行。**
 
 [English](README.en.md) · [安装指南](docs/INSTALL.zh-CN.md) · [真正在用的技术](docs/APPLIED-TECHNIQUES.zh-CN.md) · [验证记录](docs/VALIDATION.md) · [技术设计](docs/ARCHITECTURE.md) · [CEF 渲染补丁](docs/CHROMIUM-FLAGS.md)
 
-这是面向 NIKKE 的实验性兼容补丁。它针对本次测试中遇到的启动异常、部分 Wine 接口缺失和背景视频黑屏问题，并提供固定在 CrossOver 中的启动入口。
+面向 NIKKE 的 Wine 兼容补丁集：修掉进不去、剧情卡死、帧率过低和一个多余的控制台窗口。
+所有结论都来自本机实测；被推翻的早期结论在 [验证记录](docs/VALIDATION.md) 里保留了更正过程。
 
-**2026-09-26 更新：找到苹果芯片上进不去的真正根因——Rosetta 2 无法翻译 `0F 1F` 的寄存器形式 NOP，它同时卡死了 ACE 内核驱动和 Unity 的 IL2CPP。** 详见 [本次更新](docs/UPDATE-2026-09-26.zh-CN.md)。
+## 已在什么环境验证
 
-**2026-09-23 更新：补齐 ACE 反作弊所需的内核导出，新增完整安装指南。** 详见 [本次更新](docs/UPDATE-2026-09-23.zh-CN.md)。
+| 项目 | 实测值 |
+|---|---|
+| 机型 / 芯片 | Mac16,7 / **Apple M4 Pro** |
+| macOS | **26.6.2**（25G83） |
+| CrossOver | **26.1** |
+| NIKKE PC 国际服 | **152.8.13** |
+| 容器前缀 | `~/Library/Application Support/NIKKE-Wine` |
 
-**2026-09-22 更新：适配 NIKKE PC 国际服 152.8.11。** 已在 Apple Silicon + CrossOver 26.1 上实测进入大厅、战斗和爬塔；恢复可玩配置后，用户再次确认大厅页面可正常切换、不卡顿。背景动画正常，帧率体感正常。
+其他硬件、CrossOver 版本和后续游戏更新尚未验证。
 
-本次发布为 **0.4.0 实验性源码更新**，在 0.3.0 基础上修掉 Rosetta 不支持的多字节 NOP（ACE 内核驱动与 IL2CPP 的同一个根因），并补齐 ACE CORE 驱动所需的 10 个 stub。详见 [本次更新](docs/UPDATE-2026-09-26.zh-CN.md)、[0.3.0 更新](docs/UPDATE-2026-09-23.zh-CN.md) 与 [0.2.0 更新](docs/UPDATE-2026-09-22.zh-CN.md)。
+## 它修好了什么
 
-## 它解决什么问题？
+**1. 启动器黑屏 / 进不去游戏**
+根因：Rosetta 2 无法翻译 `0F 1F` 的**寄存器形式**多字节 NOP（ModRM.mod = 3），直接 SIGILL，
+同一个根因同时打死了 ACE 内核驱动和 Unity 的 IL2CPP。修复在 Wine 侧（ntoskrnl / ntdll）。
+详见 [本次更新](docs/UPDATE-2026-09-26.zh-CN.md)。
 
-- **ACE 反作弊启动失败：**补齐 ACE 调用但 CrossOver 未实现的 7 个 `ntoskrnl.exe` 内核导出（`KeTryToAcquireGuardedMutex`、`KeIpiGenericCall`、`PsGetCurrentThreadTeb` 等）。缺失会使游戏直接拒绝启动。
-- **启动兼容性：**处理本机 Rosetta 无法正确执行的少量 NOP 指令形式（macOS 侧 `nop_bridge`，以及 Wine 侧新增的 ntoskrnl / ntdll 模拟），修正特权指令异常分类，并补充游戏启动过程中调用的部分 Wine 内核接口与 ACE 驱动所需的 stub。
-- **背景动画黑屏：**让视频播放尽早使用应用支持的软件回退路径。
-- **后续启动：**把配置和运行时保存在持久目录，直接从 CrossOver 的程序列表打开官方 NIKKE 启动器。
-- **画面模糊：**支持在这个独立容器中开启 CrossOver 高分辨率模式；本机窗口配置由 1388×781 提高至 2202×1340。
+**2. 一进剧情就卡死**
+根因：两个 Media Foundation 开关必须**配对**。只设 `NOP_BRIDGE_MF_NO_DXGI=1` 是半配置状态 ——
+Unity 拿不到 DXGI device manager 而退到软件回退，reader 侧却仍按 D3D 帧的预期工作，
+于是视频管线起头后停摆：进程活着、单核 103% CPU 空转、`Player.log` 静默数分钟。
+补上 `NOP_BRIDGE_MF_SOFTWARE=1` 后剧情正常播放。
 
-这些是本机已观察到的效果，不代表兼容所有使用 ACE 的游戏，也不是所有 NIKKE 启动报错的通用修复。
+**3. 帧率低**
+根因：`CX_GRAPHICS_BACKEND=dxvk` **从来没有真正生效过**。运行时视图挂在 `WINEDLLPATH` 上，
+会**遮蔽前缀**，Wine 从视图里解析到内置 dll；把 DXVK 的 dll 装进前缀再加重写规则也没用
+（加载到的是「被当成 native 的视图内置 PE」）。把 DXVK 放进视图后真正加载，帧率明显提升。
 
-## 使用前需要什么？
+**4. 每次启动都弹出一个 conhost 窗口，且不随启动器关闭**
+根因：本项目的 `lsass.exe` 被编译成 CONSOLE 子系统，又注册为服务，Wine 就为它分配了控制台。
+窗口属于那个服务而不是启动器，所以关掉启动器也不会关。改为 GUI 子系统后消失，服务本身不受影响。
 
-本次验证环境为 **Apple M4 Max、macOS 27.0、CrossOver 26.1、NIKKE 152.8.11 国际服**。旧版记录来自 macOS 26.6.2。其他硬件、CrossOver 版本和后续游戏更新尚未验证。
+## 以后怎么启动
 
-你需要：
+**双击 `~/Applications/NIKKE Wine.app` → 点「启动」。**
 
-1. 已安装并可使用的 CrossOver 26.1 和 Rosetta。
-2. 一个已经安装 NIKKE Windows PC 版的 CrossOver 容器，官方启动器能够打开并登录。本项目默认安装位置为 `C:\NIKKE\Launcher`。
-3. Xcode Command Line Tools、Python 3、Bison 3 和 MinGW-w64，用来从源码构建补丁。
+该 app 是自包含的（Wine 加载器就在它内部），内部调用 `scripts/launch_nikke.sh`，
+脚本默认值就是已验证配置：
 
-本仓库只提供源码，不包含游戏、ACE 文件、CrossOver 二进制或账号数据。测试环境此前已使用 [li-miniloader-wine-fix](https://github.com/Dorin130/li-miniloader-wine-fix) 以及 CEF 启动器修复；这些依赖不由本项目安装。若官方启动器本身打不开，应先解决启动器问题。
-
-## 安装
-
-**当前运行时究竟替换了哪 5 个文件、各自证据是什么，见 [真正在用的技术](docs/APPLIED-TECHNIQUES.zh-CN.md)。**
-
-**完整步骤见 [安装指南](docs/INSTALL.zh-CN.md)。** 下面是概要。
-
-以下命令在本仓库根目录执行。先完全退出源容器里的游戏、启动器和后台进程。
-
-### 1. 构建兼容层
-
-```sh
-make
-make test
+```
+NOP_BRIDGE_MF_NO_DXGI / NOP_BRIDGE_MF_SOFTWARE = 1    视频不卡死
+CX_GRAPHICS_BACKEND = dxvk + d3d9,d3d10,d3d10_1,d3d10core,d3d11=n,b    DXVK 生效
+NOP_BRIDGE_PRIVILEGED = 1
 ```
 
-### 2. 构建 Wine 补丁模块
+等价的命令行方式：`cd <repo> && scripts/launch_nikke.sh`
 
-从 CodeWeavers 下载 [CrossOver 26.1 官方源码包](https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.1.0.tar.gz)，然后运行：
+> 本机不使用 CrossOver 菜单入口。`install_crossover_entry.py` 仍保留，供「从源容器克隆出独立容器」
+> 的流程使用，但当前这台机器用的是上面这个前缀加自建启动 app。
+
+## 构建
+
+需要 Xcode Command Line Tools、Python 3、Bison 3 与 MinGW-w64。
 
 ```sh
+# 1. macOS 侧（Rosetta NOP 桥）
+make && make test
+
+# 2. 下载 CrossOver 26.1 官方源码包
+#    https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.1.0.tar.gz
 python3 scripts/build_wine_modules.py \
     --archive /absolute/path/to/crossover-sources-26.1.0.tar.gz \
-    --output local/wine-modules-0.2.0
+    --output local/wine-modules
 
+# 3. 生成运行时视图
+#    这一步会：覆盖 5 个补丁模块、materialize DXVK、把 lsass.exe 的子系统改成 GUI
 python3 scripts/prepare_runtime.py \
     --output local/runtime-modules \
-    --modules local/wine-modules-0.2.0/build
+    --modules local/wine-modules/build
 ```
 
-构建脚本默认包含本次更新、线程所属进程接口及最小 Wine `lsass.exe` 组件，并验证源码包的固定 SHA-256。Bison 默认路径为 `/opt/homebrew/opt/bison/bin/bison`，不同安装位置可通过 `--bison` 指定。
+第 3 步的输出是**本机专用**：它包含绝对路径符号链接与第三方二进制，不要发布，换机器需重新生成。
 
-### 3. 添加 CrossOver 固定入口
-
-把下面的 `YOUR_NIKKE_BOTTLE` 换成你现有 NIKKE 容器的名称：
+启动 app 是一个薄壳，可以随时重建：
 
 ```sh
-python3 scripts/install_crossover_entry.py \
-    --source-prefix "$HOME/Library/Application Support/CrossOver/Bottles/YOUR_NIKKE_BOTTLE" \
-    --source-runtime local/runtime-modules \
-    --source-app build/NopBridgeLab.app \
-    --source-bridge build/libnop_bridge.dylib
+make                                   # 生成 build/NopBridgeLab.app（内含 Wine 加载器）
+APP="$HOME/Applications/NIKKE Wine.app"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+printf '#!/bin/sh\nexec "%s/scripts/launch_nikke.sh" "$@"\n' "$PWD" > "$APP/Contents/MacOS/launch"
+chmod +x "$APP/Contents/MacOS/launch"
+cp build/NopBridgeLab.app/Contents/MacOS/wine_bootstrap "$APP/Contents/MacOS/nikke_wine"
+cp src/Info.plist "$APP/Contents/Info.plist"
 ```
 
-脚本使用 APFS 克隆创建独立的 **NIKKE-Compatibility** 容器，保留已下载资源。原始容器仍然保留；已有同名目标不会被覆盖。复制的账号状态只留在本机。
+## 运行时到底替换了什么
 
-运行时存放在 `~/Library/Application Support/NIKKE Compatibility`，依赖现有的 CrossOver 安装。不要删除该目录；不再需要保留临时测试目录才能启动。
-
-## 已安装旧版，如何升级？
-
-GitHub 源码更新不会自动替换本机运行时。退出旧容器后，按上面的步骤重新构建，使用新的输出目录；然后使用下面的安装命令（替换源容器名称）：
-
-```sh
-python3 scripts/install_crossover_entry.py \
-    --source-prefix "$HOME/Library/Application Support/CrossOver/Bottles/YOUR_NIKKE_BOTTLE" \
-    --source-runtime local/runtime-modules \
-    --source-app build/NopBridgeLab.app \
-    --source-bridge build/libnop_bridge.dylib \
-    --bottle-name NIKKE-Compatibility-152 \
-    --menu-name "NIKKE Compatibility 152" \
-    --support "$HOME/Library/Application Support/NIKKE Compatibility 152"
-```
-
-新入口确认可用前，保留原入口和运行时。新安装会在复制的容器中配置 Wine 系统进程组件，不影响 macOS 服务或原容器。
-
-## 以后怎么启动？
-
-重新打开 CrossOver，进入：
-
-**NIKKE-Compatibility → NIKKE Compatibility → 官方启动器的“开始游戏”**
-
-如需更清楚的画面，在这个容器右侧开启 **高分辨率模式**，按提示重启容器。安装时可用 `--menu-name` 自定义入口名称；本机测试使用的是“NIKKE 兼容版”。
-
-当前启动配置使用已测试的 **DXVK**。在 CrossOver 中改选其他图形后端不会自动改写此专用启动配置，其他后端需另行配置和验证。
+5 个模块（`ntoskrnl.exe`、`mfplat.dll`、`mfreadwrite.dll`、`lsass.exe`，以及 Unix 侧 `ntdll.so`）
+加配对的 PE `ntdll.dll`，外加视图里的 DXVK dll。
+完整哈希、每个文件的证据来源和 10 个补丁的顺序见
+[真正在用的技术](docs/APPLIED-TECHNIQUES.zh-CN.md)。
 
 ## 已知限制
 
-- 当前配置已实测可玩，但两个后台 ACE CORE 驱动进程仍有异常退出记录；这不代表所有保护组件或检查均正常，也不是官方支持声明。
-- **不要用 CrossOver 原版 `ntoskrnl.exe` 覆盖本项目构建的版本；本项目的版本是原版的超集，覆盖回去会导致 ACE 报 `unimplemented function` 并拒绝启动。**
-- 发布源码已去除临时诊断和内存快照代码。干净构建的接口测试与用户实玩验证分别记录；新安装流程尚未完成从安装到战斗的整体验证，见 [验证记录](docs/VALIDATION.md)。
-- 未做长期稳定性、定量 FPS 或所有过场测试。CrossOver 或游戏更新后可能需要重新适配。
+以下都是实测结论，不是推测：
 
-本项目修改 Wine 兼容层，不分发或修改游戏、ACE 二进制，也不把失败的接口查询替换为固定成功值。部分接口仍明确返回不支持。
+- **GPU 视频直通做不到。** Unity 的 Media Foundation 路径需要 DXGI device manager，
+  而 **Wine 自身的 `MFCreateDXGIDeviceManager` 在这套环境里提供不了它**
+  （错误上下文即 `Context: Creating DXGIDeviceManager`）。因此视频帧只能经系统内存交付，
+  每帧多一次「显存 → 内存 → 再上传」的拷贝。这也是上面第 2 条那两个开关**必需**的原因，
+  与渲染后端无关 —— 换成 DXVK 也一样。
+- **解码本身仍是硬解。** GStreamer 管线里用的是 `vtdec_hw`（VideoToolbox 纯硬件元件），
+  软化的只是帧交付那一段，不是「用 CPU 解码」。
+- **ACE CORE 驱动进程仍有异常退出记录**，但不阻塞游戏；这不代表反作弊各组件都正常。
+- 未做长期稳定性测试与定量 FPS 测量。CrossOver 或游戏更新后可能需要重新适配。
 
-## 开发与贡献
+## 踩过的坑（改之前请先读）
 
-原生回归测试：
-
-```sh
-make test
-```
-
-Windows/Wine 接口测试需要独立、可丢弃的测试容器：
-
-```sh
-python3 scripts/test_windows.py --prefix /absolute/path/to/test-bottle \
-    --runtime local/runtime-modules
-python3 scripts/test_wine_modules.py \
-    --prefix /absolute/path/to/test-bottle \
-    --runtime local/runtime-modules
-```
-
-上述测试默认包含线程所属进程、真实退出状态、线程上下文及映射生命周期。发布纯源码包：
-
-```sh
-python3 scripts/package_source.py
-```
-
-反馈问题时请附上 Mac 型号、macOS/CrossOver 版本、使用的图形后端和出现问题的具体步骤。请先从日志里去掉登录信息、令牌和账号标识，再附上必要片段。
+- **视图里 `lib/wine/i386-windows` 是指回 CrossOver 本体的符号链接。** 往它下面 `rm` + `cp`
+  会直接改写 CrossOver 安装（本项目误伤过一次 32 位 d3d dll）。替换视图文件前先确认该目录不是链接。
+- **不要用 CrossOver 原版 `ntoskrnl.exe` 覆盖本项目构建的版本** —— 本项目版本是原版的超集。
+- 判断后端是否生效**不能只看环境变量**，要查实际加载的 dll 路径与大小
+  （DXVK 的 `d3d11.dll` ≈ 3165760 B，Wine 内置 ≈ 425552 B）。
+- **`build/wine_bootstrap` 是 `make` 生成的符号链接**，指向 `build/NopBridgeLab.app/Contents/MacOS/wine_bootstrap`。没跑过 `make` 时它是**断链** —— `cat` 没有输出、`stat` 显示 46 字节（那是目标路径的长度），看起来像空文件。
+- 校验文件时注意 `strings` 的检索目标：`CreateSharedHandle` 是 COM 虚表方法，实现在 `d3d11.dll`，
+  只 grep `dxgi.dll` 会得到假阴性。
 
 ## 许可证与致谢
 
 采用 **LGPL-2.1-or-later**，详见 [LICENSE](LICENSE) 与 [第三方来源说明](THIRD_PARTY.md)。
 
-感谢 Wine、CodeWeavers、DW-Proton、Endfield_FineWine 及此前启动器修复项目提供的公开工作。NIKKE、CrossOver 和 Rosetta 均为各自权利人的产品；本项目是独立的社区兼容研究。
+仓库只提供源码，不含游戏、ACE 文件、CrossOver 二进制或账号数据；
+不修改也不分发游戏与 ACE 二进制；不把失败的接口查询替换成固定成功值（部分接口仍明确返回不支持）。
+
+感谢 Wine、CodeWeavers、DW-Proton、Endfield_FineWine 及此前启动器修复项目提供的公开工作。
+NIKKE、CrossOver 和 Rosetta 均为各自权利人的产品；本项目是独立的社区兼容研究。
