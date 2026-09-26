@@ -27,9 +27,10 @@
 
 | 项 | 版本 |
 |---|---|
-| 硬件 | Apple Silicon（M 系列）|
-| macOS | 27.0（26.6.2 亦可）|
+| 硬件 | Apple Silicon（M 系列）；实测 **Apple M4 Pro**（Mac16,7）|
+| macOS | **26.6.2**（25G83，实测）|
 | CrossOver | 26.1 |
+| 游戏 | NIKKE PC 国际服 **152.8.13**（实测）|
 | Rosetta | 已安装 |
 | Python | 3.x |
 | Xcode CLT | 已安装 |
@@ -65,7 +66,7 @@ Wine 前缀 ~/Library/Application Support/NIKKE-Wine
 ### 2.1 从官网下载 PC 版
 
 下载 **NIKKE PC 国际服**安装包（`NIKKE.PC_Offcial_GL_<版本>.exe`）。
-本指南验证版本：`152.8.11`。
+本指南验证版本：`152.8.13`。
 
 ### 2.2 在 CrossOver 中安装
 
@@ -137,6 +138,15 @@ python3 scripts/prepare_runtime.py \
     --modules local/wine-modules-0.2.0/build
 ```
 
+除 5 个补丁模块外，这一步还会做两件影响运行效果的事：
+
+- 把 **DXVK** 的 d3d dll materialize 进视图（`d3d9`/`d3d10`/`d3d10_1`/`d3d10core`/`d3d11`）；
+- 把视图里 `lsass.exe` 的 PE 子系统改成 **GUI**。
+
+原因是：**视图挂在 `WINEDLLPATH` 上，会遮蔽前缀**。所以 DXVK 装在前缀里不会被加载 ——
+只有放进视图才生效；而 `lsass.exe` 若是 CONSOLE 子系统，Wine 会为该服务分配控制台，
+每次启动都弹出一个不随启动器关闭的 conhost 窗口。
+
 ---
 
 ## 四、安装到 Wine 前缀
@@ -173,6 +183,11 @@ done
 第 2 条容易踩坑：`ntdll` 是 Unix/PE 成对的，只覆盖 `.so` 而缺了 PE 的 `.dll`
 会直接以 `error c0000135` 启动失败。用 `prepare_runtime.py` 生成视图就不会漏
 （脚本会从 CrossOver 原样拷入那份未修改的 `ntdll.dll`）。
+
+> **前缀里的模块会与视图并存，但视图优先。** 视图（`local/runtime-modules`）通过
+> `WINEDLLPATH` 挂在最前面，所以同一份模块要**两层都更新**才能避免状态不一致 ——
+> 本机就出现过前缀 `lsass.exe` 还是旧的 CONSOLE 版本、而视图已修好的情况。
+> 判断实际加载的是哪一份，查进程映射的文件路径与大小，不要只看环境变量。
 
 ### 4.2 方式 B：创建独立容器
 
@@ -246,8 +261,17 @@ python3 scripts/test_wine_modules.py \
 
 ## 六、日常启动
 
-打开 `~/Applications/NIKKE Wine.app`，或从 CrossOver 进入
-**NIKKE-Compatibility → NIKKE Compatibility → 官方启动器的「开始游戏」**。
+**双击 `~/Applications/NIKKE Wine.app`，然后点「启动」。**
+
+该 app 是自包含的（Wine 加载器在它内部），内部调用 `scripts/launch_nikke.sh`，
+脚本默认值就是已验证配置（两个 MF 开关、DXVK 与 d3d native 覆盖）。等价命令行：
+
+```sh
+cd ~/work/nikke-crossover-compat && scripts/launch_nikke.sh
+```
+
+> 上面的「从 CrossOver 菜单进入」只在按 [4.2](#42-方式-b创建独立容器) 创建了独立容器时存在。
+> 若采用 4.1（已有前缀），CrossOver 菜单里没有这个入口 —— 用上面那个 app 启动。
 
 启动配置使用 **DXVK**。在 CrossOver 里改图形后端不会自动改写此专用配置。
 
@@ -297,6 +321,20 @@ cp /tmp/nikke-compat-backup/*.exe \
 ---
 
 ## 八、故障排查
+
+
+### 进剧情就卡死（进程还在、CPU 100%、日志不动）
+
+两个 Media Foundation 开关**没有配对**。`NOP_BRIDGE_MF_NO_DXGI=1` 单独设置是半配置状态：
+Unity 拿不到 DXGI device manager 而退到软件回退，reader 侧却仍按 D3D 帧预期工作，
+视频管线停摆。补上 `NOP_BRIDGE_MF_SOFTWARE=1` 即可。
+`scripts/launch_nikke.sh` 默认已带齐；用自建启动 app 就不会遇到。
+
+### 每次启动都弹出一个 conhost 窗口，且不随启动器关闭
+
+`lsass.exe` 是 CONSOLE 子系统，Wine 为该服务分配了控制台窗口；窗口属于服务而非启动器，
+所以关启动器不会关它。把 `lsass.exe` 的 PE 子系统改成 GUI 即可（`prepare_runtime.py`
+会自动做），改完记得**前缀与视图两层都更新**。
 
 ### 启动时报 `unimplemented function ntoskrnl.exe.KeAcquireGuardedMutex`
 

@@ -25,9 +25,10 @@ Every command and path below was verified on the reference machine.
 
 | Item | Version |
 |---|---|
-| Hardware | Apple Silicon (M-series) |
-| macOS | 27.0 (26.6.2 also works) |
+| Hardware | Apple Silicon (M-series); measured on **Apple M4 Pro** (Mac16,7) |
+| macOS | **26.6.2** (25G83, measured) |
 | CrossOver | 26.1 |
+| Game | NIKKE PC International **152.8.13** (measured) |
 | Rosetta | installed |
 | Python | 3.x |
 | Xcode CLT | installed |
@@ -59,7 +60,7 @@ launcher    ~/Applications/NIKKE Wine.app
 ### 2.1 Download the PC build
 
 Get the **NIKKE PC International** installer (`NIKKE.PC_Offcial_GL_<version>.exe`).
-Verified version: `152.8.11`.
+Verified version: `152.8.13`.
 
 ### 2.2 Install via CrossOver
 
@@ -130,6 +131,17 @@ python3 scripts/prepare_runtime.py \
     --output local/runtime-modules \
     --modules local/wine-modules-0.2.0/build
 ```
+
+Besides the five patched modules, this step does two things that affect how the game
+actually runs:
+
+- it materialises **DXVK**'s d3d dlls into the view (`d3d9`/`d3d10`/`d3d10_1`/`d3d10core`/`d3d11`);
+- it flips the view's `lsass.exe` PE subsystem to **GUI**.
+
+Because **the view sits on `WINEDLLPATH` and shadows the prefix**, DXVK installed into the
+prefix is never loaded -- only the copy inside the view takes effect -- and an `lsass.exe`
+built as a console application makes Wine allocate a console for that service, popping up a
+conhost window on every launch that outlives the launcher.
 
 ---
 
@@ -240,8 +252,18 @@ python3 scripts/test_wine_modules.py \
 
 ## 6. Launching
 
-Open `~/Applications/NIKKE Wine.app`, or from CrossOver go to
-**NIKKE-Compatibility → NIKKE Compatibility → the launcher's "Start Game"**.
+**Double-click `~/Applications/NIKKE Wine.app`, then press 启动.**
+
+The app is self-contained (the Wine loader lives inside it) and calls
+`scripts/launch_nikke.sh`, whose defaults are the verified configuration (both MF switches,
+DXVK, and the d3d native overrides). Equivalent from a shell:
+
+```sh
+cd ~/work/nikke-crossover-compat && scripts/launch_nikke.sh
+```
+
+> The "from CrossOver" route above only exists if you created a separate bottle per 4.2.
+> With 4.1 (an existing prefix) there is no such menu entry -- launch with the app.
 
 The launch profile uses **DXVK**. Changing the graphics backend in CrossOver
 does not rewrite this dedicated profile.
@@ -291,6 +313,22 @@ cp /tmp/nikke-compat-backup/*.exe \
 ---
 
 ## 8. Troubleshooting
+
+
+### Story scenes hang (process alive, one core at 100%, log frozen)
+
+The two Media Foundation switches are **not paired**. `NOP_BRIDGE_MF_NO_DXGI=1` alone is a
+half-applied state: Unity cannot get a DXGI device manager and falls back to software, while
+the reader still expects D3D frames, so the video pipeline stalls. Adding
+`NOP_BRIDGE_MF_SOFTWARE=1` fixes it. `scripts/launch_nikke.sh` carries both by default, so
+the self-built launcher app never hits this.
+
+### A conhost window appears on every launch and outlives the launcher
+
+`lsass.exe` is a console application, so Wine allocates a console for that service; the
+window belongs to the service rather than the launcher, which is why closing the launcher
+does not close it. Flip its PE subsystem to GUI (`prepare_runtime.py` does this
+automatically) and remember to update **both the prefix and the view**.
 
 ### `unimplemented function ntoskrnl.exe.KeAcquireGuardedMutex`
 
