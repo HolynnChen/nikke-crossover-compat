@@ -41,6 +41,12 @@ Every command and path below was verified on the reference machine.
 | Bison | 3.x (`brew install bison`) |
 | MinGW-w64 | for building Windows probes |
 
+> **Use CrossOver 26.1.** The patches are anchored to 26.1's source, and more than 800 files
+> in the runtime view are symlinks into CrossOver's install directory, so upgrading CrossOver
+> changes what they point at. `brew install --cask crossover` installs the latest (26.3.0 at
+> the time of writing); for 26.1 use the copy brew keeps at
+> `/opt/homebrew/Caskroom/crossover/26.1.0/CrossOver.app`, or download it from CodeWeavers.
+
 ```sh
 brew install bison mingw-w64
 ```

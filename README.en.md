@@ -24,6 +24,24 @@ data.
 > If NIKKE is already installed and its official launcher opens and logs in, skip the game
 > installation and do only the patching part.
 
+> **The CrossOver version needs pinning.** Every patch here is anchored to **26.1**'s source
+> (the build verifies the archive's SHA-256), and more than 800 files in the runtime view are
+> **symlinks into CrossOver's install directory** -- upgrading CrossOver changes what they
+> point at.
+>
+> `brew install --cask crossover` installs the **latest** version (26.3.0 at the time of
+> writing), not 26.1. For 26.1 you can use the copy brew keeps at
+> `/opt/homebrew/Caskroom/crossover/26.1.0/CrossOver.app`, or download it from CodeWeavers.
+> Keep automatic updates off (`SUAutomaticallyUpdate` defaults to false).
+
+> **On upgrading to 26.3:** verified here at source level -- all **10 patches apply cleanly**
+> to 26.3 (`local/check-patches.sh`, in build order). 26.1 to 26.3 are bug-fix-only releases:
+> the Wine base is **11.0** in both, and DXVK is **v1.10.3** in both. The published runtime,
+> however, is built and tested against 26.1; upgrading means **rebuilding the modules from
+> 26.3's source too**, because more than 800 files in the view are symlinks into CrossOver and
+> an upgrade swaps them all. Note that from 26.2 CrossOver warns about 32-bit bottles, and this
+> project's prefix is 32-bit (the launcher is a 32-bit program).
+
 ## Installing
 
 **One command (recommended):**

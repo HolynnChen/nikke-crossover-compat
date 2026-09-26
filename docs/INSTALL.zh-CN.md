@@ -43,6 +43,11 @@
 | Bison | 3.x（`brew install bison`）|
 | MinGW-w64 | 用于构建 Windows 探针 |
 
+> **CrossOver 要用 26.1。** 补丁按 26.1 的源码锚定，运行时视图里 800 多个文件也是指向
+> CrossOver 安装目录的符号链接，升级 CrossOver 会让它们指向别的内容。
+> `brew install --cask crossover` 装的是最新版（当前 26.3.0）；26.1 可用 brew 保留的
+> `/opt/homebrew/Caskroom/crossover/26.1.0/CrossOver.app`，或从 CodeWeavers 官网下载。
+
 ### 安装依赖
 
 ```sh

@@ -130,7 +130,7 @@ else
     else
         mkdir -p "$(dirname "$ARCHIVE")"
         echo "  downloading $SOURCE_URL"
-        echo "  (about 270 MB; a partial download is left as .part and resumed next run)"
+        echo "  (about 142 MB; a partial download is left as .part and resumed next run)"
         curl -L --fail --progress-bar -C - -o "$ARCHIVE.part" "$SOURCE_URL" ||
             die "download failed; fetch it yourself and pass --archive PATH"
         mv "$ARCHIVE.part" "$ARCHIVE"
