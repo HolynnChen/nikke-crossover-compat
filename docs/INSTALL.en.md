@@ -132,16 +132,10 @@ python3 scripts/prepare_runtime.py \
     --modules local/wine-modules-0.2.0/build
 ```
 
-Besides the five patched modules, this step does two things that affect how the game
-actually runs:
-
-- it materialises **DXVK**'s d3d dlls into the view (`d3d9`/`d3d10`/`d3d10_1`/`d3d10core`/`d3d11`);
-- it flips the view's `lsass.exe` PE subsystem to **GUI**.
-
-Because **the view sits on `WINEDLLPATH` and shadows the prefix**, DXVK installed into the
-prefix is never loaded -- only the copy inside the view takes effect -- and an `lsass.exe`
-built as a console application makes Wine allocate a console for that service, popping up a
-conhost window on every launch that outlives the launcher.
+Besides the five patched modules, this step places **DXVK** into the view and flips the
+view's `lsass.exe` PE subsystem to **GUI** (otherwise every launch pops up a conhost window
+that will not close). Both must take effect inside the view: it sits on `WINEDLLPATH` and
+**shadows the prefix**.
 
 ---
 
@@ -152,8 +146,7 @@ conhost window on every launch that outlives the launcher.
 Replace only the compatibility modules:
 
 **Five files** are replaced: four under `x86_64-windows/`, one under
-`x86_64-unix/`. See [what is actually applied](APPLIED-TECHNIQUES.en.md) for
-the list and the evidence.
+`x86_64-unix/`. The full list and hashes are in [5.1](#51-check-module-hashes).
 
 ```sh
 PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
@@ -176,7 +169,10 @@ done
 > `local/runtime-modules/lib/wine/x86_64-unix/ntdll.so` is the patched one, and
 > `lib/wine/x86_64-windows/ntdll.dll` **exists alongside it**. ntdll is a
 > Unix/PE pair; overlaying the `.so` without the PE `.dll` fails to start with
-> `error c0000135`. Generating the view with `prepare_runtime.py` cannot miss
+> > **Update both the prefix and the view.** The view sits on `WINEDLLPATH` and shadows the
+> prefix, so updating only one layer leaves them inconsistent.
+
+`error c0000135`. Generating the view with `prepare_runtime.py` cannot miss
 > this, because the script copies that unmodified `ntdll.dll` in from CrossOver.
 
 ### 4.2 Option B — separate bottle
@@ -262,8 +258,9 @@ DXVK, and the d3d native overrides). Equivalent from a shell:
 cd ~/work/nikke-crossover-compat && scripts/launch_nikke.sh
 ```
 
-> The "from CrossOver" route above only exists if you created a separate bottle per 4.2.
-> With 4.1 (an existing prefix) there is no such menu entry -- launch with the app.
+> If you created a separate bottle per [4.2](#42-option-b--separate-bottle) you can also
+> launch from the CrossOver menu; with 4.1 (an existing prefix) there is no such entry, so use
+> the app above.
 
 The launch profile uses **DXVK**. Changing the graphics backend in CrossOver
 does not rewrite this dedicated profile.

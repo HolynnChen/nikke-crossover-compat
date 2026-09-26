@@ -138,14 +138,9 @@ python3 scripts/prepare_runtime.py \
     --modules local/wine-modules-0.2.0/build
 ```
 
-除 5 个补丁模块外，这一步还会做两件影响运行效果的事：
-
-- 把 **DXVK** 的 d3d dll materialize 进视图（`d3d9`/`d3d10`/`d3d10_1`/`d3d10core`/`d3d11`）；
-- 把视图里 `lsass.exe` 的 PE 子系统改成 **GUI**。
-
-原因是：**视图挂在 `WINEDLLPATH` 上，会遮蔽前缀**。所以 DXVK 装在前缀里不会被加载 ——
-只有放进视图才生效；而 `lsass.exe` 若是 CONSOLE 子系统，Wine 会为该服务分配控制台，
-每次启动都弹出一个不随启动器关闭的 conhost 窗口。
+这一步除覆盖 5 个补丁模块外，还会把 **DXVK** 放进视图，并把视图里 `lsass.exe` 的 PE
+子系统改成 **GUI**（否则每次启动都会弹出一个关不掉的 conhost 窗口）。
+两者都必须在视图里生效：视图挂在 `WINEDLLPATH` 上，**会遮蔽前缀**。
 
 ---
 
@@ -156,7 +151,7 @@ python3 scripts/prepare_runtime.py \
 如果已经有一个装好 NIKKE 的前缀，只替换兼容层模块。
 
 共替换 **5 个文件**：4 个 PE 模块在 `x86_64-windows/`，1 个 `ntdll.so` 在
-`x86_64-unix/`。清单与证据见 [真正在用的技术](APPLIED-TECHNIQUES.zh-CN.md)。
+`x86_64-unix/`。完整清单与哈希见 [5.1](#51-核对模块哈希)。
 
 ```sh
 PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
@@ -184,10 +179,8 @@ done
 会直接以 `error c0000135` 启动失败。用 `prepare_runtime.py` 生成视图就不会漏
 （脚本会从 CrossOver 原样拷入那份未修改的 `ntdll.dll`）。
 
-> **前缀里的模块会与视图并存，但视图优先。** 视图（`local/runtime-modules`）通过
-> `WINEDLLPATH` 挂在最前面，所以同一份模块要**两层都更新**才能避免状态不一致 ——
-> 本机就出现过前缀 `lsass.exe` 还是旧的 CONSOLE 版本、而视图已修好的情况。
-> 判断实际加载的是哪一份，查进程映射的文件路径与大小，不要只看环境变量。
+> **前缀与视图两层都要更新。** 视图通过 `WINEDLLPATH` 挂在最前面并遮蔽前缀，
+> 只更新一层会出现「视图已修好、前缀还是旧版」的不一致。
 
 ### 4.2 方式 B：创建独立容器
 
@@ -270,8 +263,8 @@ python3 scripts/test_wine_modules.py \
 cd ~/work/nikke-crossover-compat && scripts/launch_nikke.sh
 ```
 
-> 上面的「从 CrossOver 菜单进入」只在按 [4.2](#42-方式-b创建独立容器) 创建了独立容器时存在。
-> 若采用 4.1（已有前缀），CrossOver 菜单里没有这个入口 —— 用上面那个 app 启动。
+> 若按 [4.2](#42-方式-b创建独立容器) 建了独立容器，也可以从 CrossOver 菜单进入；
+> 采用 4.1（已有前缀）时菜单里没有该入口，用上面这个 app 启动。
 
 启动配置使用 **DXVK**。在 CrossOver 里改图形后端不会自动改写此专用配置。
 
