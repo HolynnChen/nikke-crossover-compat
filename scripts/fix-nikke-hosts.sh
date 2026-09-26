@@ -37,7 +37,8 @@
 #
 set -uo pipefail
 
-HOSTS=/etc/hosts
+# 允许用 NIKKE_HOSTS_PATH 覆盖（测试用；Windows 版同样支持）
+HOSTS=${NIKKE_HOSTS_PATH:-/etc/hosts}
 MARKER="#UHE_"
 JOBS=${JOBS:-12}
 DRY_RUN=0
@@ -130,6 +131,15 @@ while [ $# -gt 0 ]; do
 done
 command -v curl >/dev/null 2>&1 || { echo "需要 curl" >&2; exit 1; }
 
+# 把延迟表示统一成毫秒：ICMP 直接是毫秒；"~0.52" 是 TLS 握手秒数；"x" 表示无数据
+to_ms() {
+    case "$1" in
+        ~*) python3 -c "print(int(float('${1#\~}')*1000))" 2>/dev/null || echo 999999 ;;
+        x|"") echo 999999 ;;
+        *) echo "${1%%.*}" ;;
+    esac
+}
+
 current_pin() { # domain -> ip
     awk -v d="$1" '$0 !~ /^#/ { for (i = 2; i <= NF; i++) if ($i == d) { print $1; exit } }' "$HOSTS"
 }
@@ -183,19 +193,24 @@ for entry in $DOMAINS; do
     kind=${entry##*:}
     echo "── $domain  [$kind]"
     pin=$(current_pin "$domain")
+    pin_ok=0
+    pin_score=999999
     if [ -n "$pin" ]; then
         line=$(grep "^RES $domain $pin " "$WORK/results" 2>/dev/null | head -1)
         lat=$(echo "$line" | awk '{print $4}'); ok=$(echo "$line" | awk '{print $5}')
         if [ "$ok" = "✓" ]; then
+            pin_ok=1
+            pin_score=$(to_ms "$lat")
             printf '   hosts 现值 : %-16s 可达 ✓  延迟 %s\n' "$pin" "${lat:-?}"
         else
             printf '   hosts 现值 : %-16s ✗ 不可达（过期了，需要换）\n' "$pin"
         fi
     else
-        printf '   hosts 现值 : （未 pin）\n'
+        printf '   hosts 现值 : （未 pin，将补上）\n'
     fi
 
-    if [ "$kind" != "plain" ]; then
+    # 所有类型都要取候选：未 pin 或现值失效时，plain 类也要补
+    if true; then
         cands=$(grep "^ECS $domain " "$WORK/ecs-results" 2>/dev/null \
                 | awk '{print $3" "$4}' | sort -u)
         if [ -n "$cands" ]; then
@@ -207,11 +222,7 @@ for entry in $DOMAINS; do
                 line=$(grep "^RES $domain $ip " "$WORK/results" 2>/dev/null | head -1)
                 lat=$(echo "$line" | awk '{print $4}'); ok=$(echo "$line" | awk '{print $5}')
                 [ -z "$lat" ] && continue
-                case "$lat" in
-                    ~*) score=$(python3 -c "print(int(float('${lat#\~}')*1000))" 2>/dev/null || echo 999999) ;;
-                    x)  score=999999 ;;
-                    *)  score=${lat%%.*} ;;
-                esac
+                score=$(to_ms "$lat")
                 printf '     %-16s %s  延迟 %-10s\n' "$ip" "${ok:-?}" "$lat"
                 if [ "${ok:-}" = "✓" ] && [ "$score" -lt "$best_score" ] 2>/dev/null; then
                     best=$ip; best_score=$score
@@ -219,8 +230,31 @@ for entry in $DOMAINS; do
             done <<< "$cands"
             [ -n "$best" ] && printf '   → 最快: %s\n' "$best"
 
-            if [ -n "$best" ] && [ "$best" != "$pin" ]; then
-                if [ "$kind" = "cdn" ] || [ "$INCLUDE_GATEWAYS" -eq 1 ]; then
+            # 是否写入：未 pin / 现值不可达 → 任何类型都要补；
+            # 现值可用时，只有 cdn（和已启用的 gateway）才为"更快"而改，
+            # plain 类不折腾已能用的解析。
+            do_write=0; why=""
+            if [ -n "$best" ] && [ "$pin_ok" -eq 0 ]; then
+                do_write=1
+                if [ -z "$pin" ]; then why="未 pin，补上"; else why="现值不可达，替换"; fi
+            elif [ -n "$best" ] && [ "$best" != "$pin" ] && [ "$kind" != "plain" ]; then
+                # 现值够快就不折腾：差距在 10ms 或 15% 以内视为等价，
+                # 否则测量噪声会让脚本每次都在等价节点之间反复改写 hosts
+                keep=0
+                if [ "$pin_ok" -eq 1 ] && [ "$pin_score" -lt 999999 ] && [ "$best_score" -lt 999999 ]; then
+                    if [ "$best_score" -gt "$pin_score" ]; then diff=$((best_score - pin_score)); else diff=$((pin_score - best_score)); fi
+                    if [ "$diff" -le 10 ] || [ $((diff * 100)) -le $((pin_score * 15)) ]; then keep=1; fi
+                fi
+                if [ "$keep" -eq 0 ]; then do_write=1; why="找到更快的节点"; else
+                    printf '   （现值与最优相差 %sms，视为等价，不折腾）\n' "$diff"
+                fi
+            fi
+
+            if [ "$do_write" -eq 1 ]; then
+                allowed=1
+                if [ "$kind" = "gateway" ] && [ "$INCLUDE_GATEWAYS" -eq 0 ]; then allowed=0; fi
+                if [ "$allowed" -eq 1 ]; then
+                    printf '   → 写入 %s（%s）\n' "$best" "$why"
                     if [ "$DRY_RUN" -eq 1 ]; then
                         printf '   [dry-run] 将写入: %s %s\n' "$best" "$domain"
                         PENDING=1
@@ -228,9 +262,13 @@ for entry in $DOMAINS; do
                         BEST_OF_ALL="$BEST_OF_ALL$domain=$best;"
                     fi
                 else
-                    printf '   （网关类；如只想动 CDN 类请加 --cdn-only）\n'
+                    if [ "$pin_ok" -eq 0 ]; then
+                        printf '   ⚠ 现值不可达，但当前是 --cdn-only；请去掉该参数重跑以修复\n'
+                    else
+                        printf '   （网关类；如只想动 CDN 类请加 --cdn-only）\n'
+                    fi
                 fi
-            elif [ -n "$best" ]; then
+            elif [ -n "$best" ] && [ "$best" = "$pin" ]; then
                 printf '   （现值已是最快，无需改动）\n'
             fi
         else
@@ -242,8 +280,9 @@ done
 
 # 写入
 if [ -n "$BEST_OF_ALL" ]; then
-    if [ "$(id -u)" -ne 0 ]; then
-        echo "需要 root 才能改 $HOSTS：请用 sudo 重新运行。" >&2
+    # 只有改真实 /etc/hosts 才强制 root（NIKKE_HOSTS_PATH 指向别处时允许直接写，便于测试）
+    if [ "$(id -u)" -ne 0 ] && [ "$HOSTS" = "/etc/hosts" ]; then
+        echo "需要 root 才能改 ${HOSTS}：请用 sudo 重新运行。" >&2
         exit 1
     fi
     STAMP=$(date +%Y%m%d-%H%M%S)

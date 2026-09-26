@@ -396,17 +396,18 @@ foreach ($d in $Domains) {
     Write-Host ("-- $domain  [{0}]" -f $d.Kind)
 
     $pin = Get-CurrentPin -Domain $domain -Lines $hostsLines
+    $pinOk = $false
     if ($pin) {
         $m = $latOf["$domain|$pin"]
         if ($m -and $m.Ok) {
+            $pinOk = $true
             } else {
             Write-Host ("   hosts 现值 : {0,-16} 不可达（过期了，需要换）" -f $pin)
         }
     } else {
-        Write-Host '   hosts 现值 : （未 pin）'
+        Write-Host '   hosts 现值 : （未 pin，将补上）'
     }
 
-    if ($d.Kind -eq 'plain') { Write-Host ''; continue }
 
     $cands = @($ecs | Where-Object { $_.Domain -eq $domain } |
                Sort-Object Ip -Unique |
@@ -429,17 +430,45 @@ foreach ($d in $Domains) {
     if ($ranked.Count -gt 0) { $best = $ranked[0].Ip }
     if ($best) { Write-Host ("   -> 选定: {0}" -f $best) }
 
-    if ($best -and $best -ne $pin) {
-        if ($d.Kind -eq 'cdn' -or -not $CdnOnly) {
+    # 是否写入：未 pin / 现值不可达 -> 任何类型都要补；
+    # 现值可用时，只有 cdn（和已启用的 gateway）才为"更快"而改
+    $doWrite = $false; $why = ''
+    if ($best -and -not $pinOk) {
+        $doWrite = $true
+        if ($pin) { $why = '现值不可达，替换' } else { $why = '未 pin，补上' }
+    } elseif ($best -and $best -ne $pin -and $d.Kind -ne 'plain') {
+        # 现值够快就不折腾：差距在 10ms 或 15% 以内视为等价，
+        # 否则测量噪声会让脚本每次都在等价节点之间反复改写 hosts
+        $keep = $false
+        if ($pinOk -and $latOf["$domain|$pin"] -and $latOf["$domain|$best"]) {
+            $pm = $latOf["$domain|$pin"].Ms
+            $bm = $latOf["$domain|$best"].Ms
+            $diff = [Math]::Abs($bm - $pm)
+            if ($diff -le 10 -or ($diff * 100) -le ($pm * 15)) { $keep = $true }
+        }
+        if ($keep) {
+            Write-Host ("   （现值与最优相差 {0} ms，视为等价，不折腾）" -f $diff)
+        } else {
+            $doWrite = $true; $why = '找到更快的节点'
+        }
+    }
+
+    if ($doWrite) {
+        $allowed = $true
+        if ($d.Kind -eq 'gateway' -and $CdnOnly) { $allowed = $false }
+        if ($allowed) {
+            Write-Host ("   -> 写入 {0}（{1}）" -f $best, $why)
             if ($DryRun) {
                 Write-Host ("   [dry-run] 将写入: {0} {1}" -f $best, $domain)
             } else {
                 $wanted[$domain] = $best
             }
+        } elseif (-not $pinOk) {
+            Write-Host '   ! 现值不可达，但当前是 --cdn-only；请去掉该参数重跑以修复'
         } else {
             Write-Host '   （网关类；如只想动 CDN 类请加 --cdn-only）'
         }
-    } elseif ($best) {
+    } elseif ($best -and $best -eq $pin) {
         Write-Host '   （现值已是最快，无需改动）'
     }
     Write-Host ''
