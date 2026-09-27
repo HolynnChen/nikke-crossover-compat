@@ -152,7 +152,7 @@ scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine"
 
 > ⚠️ **这一步必须在安装游戏之前做完。** 少了补丁，启动器会黑屏、卡在「正在初始化」、下不动资源。
 
-共替换 **4 个 PE 模块**：
+共替换 **5 个 PE 模块**：
 
 ```sh
 PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
@@ -160,17 +160,20 @@ RUNTIME="$PWD/local/runtime-modules"
 
 # 备份原文件
 mkdir -p /tmp/nikke-compat-backup
-for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
+for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe ntdll.dll; do
   cp -p "$PREFIX/drive_c/windows/system32/$f" /tmp/nikke-compat-backup/ 2>/dev/null
 done
 
 # 安装
-for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
+for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe ntdll.dll; do
   cp "$RUNTIME/lib/wine/x86_64-windows/$f" "$PREFIX/drive_c/windows/system32/"
 done
 ```
 
-**`ntdll.so` 不需要拷进前缀。** 它由启动 app 的 `NOP_BRIDGE_NTDLL` 指向视图生效，
+**PE 版 `ntdll.dll` 要拷，Unix 版 `ntdll.so` 不要拷。**
+`ntdll.dll` 里带着给启动器内嵌 TBS/Chromium 追加 `--in-process-gpu` 的补丁（修启动器黑屏），
+必须和视图里的 `ntdll.so` 来自同一次构建，否则 ntdll 的 PE/Unix 两半版本不一致。
+`ntdll.so` 则由启动 app 的 `NOP_BRIDGE_NTDLL` 指向视图生效，不需要进前缀。 它由启动 app 的 `NOP_BRIDGE_NTDLL` 指向视图生效，
 只需保证这两点：
 
 1. `local/runtime-modules/lib/wine/x86_64-unix/ntdll.so` 是打过补丁的那份；
@@ -276,10 +279,10 @@ python3 scripts/build_wine_modules.py \
 python3 scripts/prepare_runtime.py \
     --output local/runtime-modules-new --modules local/wine-modules-new/build
 
-# 备份并替换全部 4 个模块（与第四节相同；漏掉 mfplat / mfreadwrite 会让剧情重新卡死）
+# 备份并替换全部 5 个模块（与第四节相同；漏掉 mfplat / mfreadwrite 会让剧情重新卡死）
 PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
 mkdir -p /tmp/nikke-compat-backup
-for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
+for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe ntdll.dll; do
   cp -p "$PREFIX/drive_c/windows/system32/$f" /tmp/nikke-compat-backup/
   cp "local/runtime-modules-new/lib/wine/x86_64-windows/$f" \
      "$PREFIX/drive_c/windows/system32/"

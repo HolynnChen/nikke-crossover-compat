@@ -190,7 +190,10 @@ fi
 # ------------------------------------------------------- 7. modules into the prefix
 step "7/9 installing the patched modules into the prefix"
 mkdir -p "$ROOT/local/backup"
-for module in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
+# ntdll.dll is the PE half that carries the Chromium/CEF command-line patch;
+    # it has to sit in the prefix too, alongside the view's Unix ntdll.so, or the
+    # two halves of ntdll come from different builds.
+    for module in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe ntdll.dll; do
     source_file="$RUNTIME_OUT/lib/wine/x86_64-windows/$module"
     [ -f "$source_file" ] || die "missing $source_file"
     target="$PREFIX/drive_c/windows/system32/$module"

@@ -71,9 +71,9 @@ python3 scripts/prepare_runtime.py \
 # 4. 创建前缀（需要第 3 步的视图：缺了它会直接报 runtime view is missing）
 scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine"
 
-# 5. 先装补丁，再装游戏 —— 顺序不能反
+# 5. 先装补丁（含 PE 版 ntdll.dll），再装游戏 —— 顺序不能反
 #    少了补丁，启动器会黑屏、卡在「正在初始化」、下不动资源
-for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
+for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe ntdll.dll; do
   cp "local/runtime-modules/lib/wine/x86_64-windows/$f" \
      "$HOME/Library/Application Support/NIKKE-Wine/drive_c/windows/system32/"
 done

@@ -154,7 +154,7 @@ That noise is normal. `prefix created` means it worked.
 > ⚠️ **This has to be done before installing the game.** Without the patches the launcher comes up
 > black, stalls at "initialising" and cannot download resources.
 
-Four PE modules are replaced:
+Five PE modules are replaced:
 
 ```sh
 PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
@@ -162,17 +162,21 @@ RUNTIME="$PWD/local/runtime-modules"
 
 # keep the originals
 mkdir -p /tmp/nikke-compat-backup
-for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
+for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe ntdll.dll; do
   cp -p "$PREFIX/drive_c/windows/system32/$f" /tmp/nikke-compat-backup/ 2>/dev/null
 done
 
 # install
-for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
+for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe ntdll.dll; do
   cp "$RUNTIME/lib/wine/x86_64-windows/$f" "$PREFIX/drive_c/windows/system32/"
 done
 ```
 
-**`ntdll.so` does not go into the prefix.** The launcher app points `NOP_BRIDGE_NTDLL` at the view,
+**The PE `ntdll.dll` does go in; the Unix `ntdll.so` does not.**
+`ntdll.dll` carries the patch that appends `--in-process-gpu` to the launcher's embedded
+TBS/Chromium, so it must come from the same build as the view's `ntdll.so` -- otherwise the
+PE and Unix halves of ntdll are different builds. The `.so` is loaded through the launcher
+app's `NOP_BRIDGE_NTDLL` and stays in the view. The launcher app points `NOP_BRIDGE_NTDLL` at the view,
 so only two things matter:
 
 1. `local/runtime-modules/lib/wine/x86_64-unix/ntdll.so` is the patched one;
@@ -282,11 +286,11 @@ python3 scripts/build_wine_modules.py \
 python3 scripts/prepare_runtime.py \
     --output local/runtime-modules-new --modules local/wine-modules-new/build
 
-# back up and replace all four modules (same as section 4; leaving out
+# back up and replace all five modules (same as section 4; leaving out
 # mfplat / mfreadwrite makes cutscenes hang again)
 PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
 mkdir -p /tmp/nikke-compat-backup
-for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
+for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe ntdll.dll; do
   cp -p "$PREFIX/drive_c/windows/system32/$f" /tmp/nikke-compat-backup/
   cp "local/runtime-modules-new/lib/wine/x86_64-windows/$f" \
      "$PREFIX/drive_c/windows/system32/"

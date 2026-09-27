@@ -82,7 +82,7 @@ scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine"
 # 5. patches first, then the game -- this order cannot be swapped
 #    without the patches the launcher is black, stalls at "initialising"
 #    and cannot download resources
-for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
+for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe ntdll.dll; do
   cp "local/runtime-modules/lib/wine/x86_64-windows/$f" \
      "$HOME/Library/Application Support/NIKKE-Wine/drive_c/windows/system32/"
 done
