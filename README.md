@@ -103,12 +103,13 @@ cd <本仓库> && scripts/launch_nikke.sh
 
 | 问题 | 原因 | 修复位置 |
 |---|---|---|
-| 启动器黑屏 / 进不去 | Rosetta 2 无法翻译 `0F 1F` 的**寄存器形式**多字节 NOP，同时打死 ACE 内核驱动和 Unity IL2CPP | Wine 侧 ntoskrnl / ntdll 补丁 |
+| 启动器黑屏（窗口全黑，但一切 API 都"正常"）| `winemac.drv` 只在**拥有窗口的那个进程**里创建绘制表面，跨进程呈现会被**静默丢弃**；启动器内嵌的 TBS/Chromium 恰好在独立的 GPU 进程里渲染 | `crossover-chromium-flags.patch` 给 `tbs_browser.exe` 追加 `--in-process-gpu --disable-gpu-compositing` |
+| 启动器起不来 / 游戏进程根本起不来 | Rosetta 2 无法翻译 `0F 1F` 的**寄存器形式**多字节 NOP，同时打死 ACE 内核驱动和 Unity IL2CPP | Wine 侧 ntoskrnl / ntdll 补丁 |
 | 一进剧情就卡死 | 两个 Media Foundation 开关**必须配对**；只设 `NOP_BRIDGE_MF_NO_DXGI=1` 会让视频管线停摆 | `NOP_BRIDGE_MF_SOFTWARE=1` |
 | 帧率低 | `CX_GRAPHICS_BACKEND=dxvk` 单独设置不生效 —— 运行时视图会遮蔽前缀 | 把 DXVK 放进视图，并加 d3d native 覆盖 |
 | 每次启动弹出 conhost 窗口 | `lsass.exe` 是 CONSOLE 子系统，Wine 为这个服务分配了控制台 | 改成 GUI 子系统 |
 
-以上除第一项外都已固化在 `scripts/launch_nikke.sh` 与 `scripts/prepare_runtime.py` 里，
+上表中两处黑屏由 Wine 补丁解决，其余都已固化在 `scripts/launch_nikke.sh` 与 `scripts/prepare_runtime.py` 里，
 正常安装无需手工设置。
 
 ## 出问题了

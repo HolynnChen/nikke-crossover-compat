@@ -105,13 +105,18 @@ python3 scripts/build_wine_modules.py \
 The script applies the patches in a fixed order and verifies the archive's SHA-256, refusing to
 build on a mismatch:
 
-| Patch | What it does |
-|---|---|
-| `crossover-kernel.patch` | Rosetta NOP instructions and privileged exception handling |
-| `crossover-thread-process-experimental.patch` | thread-to-process lookup |
-| `crossover-september-update.patch` | driver entry point and memory mapping |
-| `crossover-ace-kernel-exports.patch` | **the kernel exports ACE needs** |
-| `crossover-mf-software.patch` | software video fallback (fixes the black screen) |
+| Patch | File | What it does |
+|---|---|---|
+| `crossover-kernel.patch` | `ntoskrnl.exe/sync.c` | kernel synchronisation primitives (guarded mutexes and friends) |
+| `crossover-thread-process-experimental.patch` | `ntoskrnl.exe/ntoskrnl.c` | thread-to-process lookup |
+| `crossover-september-update.patch` | `ntoskrnl.exe/instr.c` | driver entry point and memory mapping |
+| `crossover-ace-kernel-exports.patch` | `ntoskrnl.exe/sync.c` | **the kernel exports ACE needs** |
+| `crossover-ace-extended-exports.patch` | `ntoskrnl.exe/ntoskrnl.c` | further kernel exports ACE needs |
+| `crossover-ace-core-driver-stubs.patch` | `ntoskrnl.exe/ntoskrnl.c` | stubs the ACE CORE drivers call |
+| `crossover-ntoskrnl-rosetta-nop.patch` | `ntoskrnl.exe/instr.c` | multi-byte NOP emulation in kernel mode |
+| `crossover-rosetta-multibyte-nop.patch` | `ntdll/unix/signal_x86_64.c` | multi-byte NOP emulation in user mode (Rosetta) |
+| `crossover-mf-software.patch` | `mfreadwrite/reader.c` | software video fallback (cutscenes no longer hang) |
+| `crossover-chromium-flags.patch` | `ntdll/loader.c` | **appends `--in-process-gpu` to `tbs_browser.exe` (fixes the black launcher)** |
 
 ### 2.4 Produce the runtime view
 

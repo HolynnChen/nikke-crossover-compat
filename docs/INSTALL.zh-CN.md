@@ -105,13 +105,18 @@ python3 scripts/build_wine_modules.py \
 
 脚本按固定顺序应用补丁，并校验源码包 SHA-256，不匹配会拒绝构建：
 
-| 补丁 | 作用 |
-|---|---|
-| `crossover-kernel.patch` | Rosetta NOP 指令与特权异常处理 |
-| `crossover-thread-process-experimental.patch` | 线程所属进程查询 |
-| `crossover-september-update.patch` | 驱动入口与内存映射 |
-| `crossover-ace-kernel-exports.patch` | **ACE 反作弊所需的内核导出** |
-| `crossover-mf-software.patch` | 视频软件回退（修复黑屏）|
+| 补丁 | 改的文件 | 作用 |
+|---|---|---|
+| `crossover-kernel.patch` | `ntoskrnl.exe/sync.c` | 内核同步原语（guarded mutex 等）|
+| `crossover-thread-process-experimental.patch` | `ntoskrnl.exe/ntoskrnl.c` | 线程所属进程查询 |
+| `crossover-september-update.patch` | `ntoskrnl.exe/instr.c` | 驱动入口与内存映射 |
+| `crossover-ace-kernel-exports.patch` | `ntoskrnl.exe/sync.c` | **ACE 反作弊所需的内核导出** |
+| `crossover-ace-extended-exports.patch` | `ntoskrnl.exe/ntoskrnl.c` | ACE 所需的扩展内核导出 |
+| `crossover-ace-core-driver-stubs.patch` | `ntoskrnl.exe/ntoskrnl.c` | ACE CORE 驱动所需的桩函数 |
+| `crossover-ntoskrnl-rosetta-nop.patch` | `ntoskrnl.exe/instr.c` | 内核态多字节 NOP 模拟 |
+| `crossover-rosetta-multibyte-nop.patch` | `ntdll/unix/signal_x86_64.c` | 用户态多字节 NOP 模拟（Rosetta）|
+| `crossover-mf-software.patch` | `mfreadwrite/reader.c` | 视频软件回退（剧情不卡死）|
+| `crossover-chromium-flags.patch` | `ntdll/loader.c` | **给 `tbs_browser.exe` 追加 `--in-process-gpu`（修启动器黑屏）**|
 
 ### 2.4 生成运行时视图
 
