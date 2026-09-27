@@ -113,7 +113,7 @@ cd <this repo> && scripts/launch_nikke.sh
 | Problem | Cause | Fixed by |
 |---|---|---|
 | Launcher window is black although every API reports success | `winemac.drv` only creates a surface in the process that **owns the window**; presenting from another process is **silently discarded**, and the launcher's embedded TBS/Chromium renders in a separate GPU process | `crossover-chromium-flags.patch` appends `--in-process-gpu --disable-gpu-compositing` to `tbs_browser.exe` |
-| Launcher black screen / cannot get in | Rosetta 2 cannot translate the **register form** of the `0F 1F` multi-byte NOP, which kills both ACE's kernel driver and Unity's IL2CPP | the Wine-side ntoskrnl / ntdll patches |
+| Launcher never appears / the game process does not start | Rosetta 2 cannot translate the **register form** of the `0F 1F` multi-byte NOP, which kills both ACE's kernel driver and Unity's IL2CPP | the Wine-side ntoskrnl / ntdll patches |
 | Story scenes hang | The two Media Foundation switches **must be paired**; `NOP_BRIDGE_MF_NO_DXGI=1` alone stalls the video pipeline | `NOP_BRIDGE_MF_SOFTWARE=1` |
 | Low frame rate | `CX_GRAPHICS_BACKEND=dxvk` on its own does nothing -- the runtime view shadows the prefix | DXVK placed inside the view, plus the d3d native overrides |
 | A conhost window on every launch | `lsass.exe` is a console application, so Wine allocates a console for that service | rebuilt as a GUI application |
