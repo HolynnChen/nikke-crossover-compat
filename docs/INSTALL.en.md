@@ -172,19 +172,19 @@ for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe ntdll.dll; do
 done
 ```
 
-**The PE `ntdll.dll` does go in; the Unix `ntdll.so` does not.**
+**The PE `ntdll.dll` goes into the prefix; the Unix `ntdll.so` does not.**
+
 `ntdll.dll` carries the patch that appends `--in-process-gpu` to the launcher's embedded
-TBS/Chromium, so it must come from the same build as the view's `ntdll.so` -- otherwise the
-PE and Unix halves of ntdll are different builds. The `.so` is loaded through the launcher
-app's `NOP_BRIDGE_NTDLL` and stays in the view. The launcher app points `NOP_BRIDGE_NTDLL` at the view,
-so only two things matter:
+TBS/Chromium (the black-launcher fix), so it has to come from the same build as the view's
+`ntdll.so` -- otherwise the PE and Unix halves of ntdll are different builds. The `.so` is
+loaded through the launcher app's `NOP_BRIDGE_NTDLL`, so the view must satisfy:
 
 1. `local/runtime-modules/lib/wine/x86_64-unix/ntdll.so` is the patched one;
 2. `lib/wine/x86_64-windows/ntdll.dll` **must exist alongside it**.
 
-The second point is an easy trap: `ntdll` is a Unix/PE pair, and replacing only the `.so` while
-the `.dll` is missing fails at startup with `error c0000135`. Generating the view with
-`prepare_runtime.py` cannot miss it.
+The second point is an easy trap: `ntdll` is a Unix/PE pair, and replacing only the `.so`
+while the `.dll` is missing fails at startup with `error c0000135`. Generating the view with
+`prepare_runtime.py` cannot miss either one.
 
 > **Update both layers.** The view shadows the prefix, so updating only one of them leaves the
 > view fixed and the prefix stale.

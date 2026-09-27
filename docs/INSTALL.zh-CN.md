@@ -170,17 +170,17 @@ for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe ntdll.dll; do
 done
 ```
 
-**PE 版 `ntdll.dll` 要拷，Unix 版 `ntdll.so` 不要拷。**
+**PE 版 `ntdll.dll` 要拷进前缀，Unix 版 `ntdll.so` 不用。**
+
 `ntdll.dll` 里带着给启动器内嵌 TBS/Chromium 追加 `--in-process-gpu` 的补丁（修启动器黑屏），
-必须和视图里的 `ntdll.so` 来自同一次构建，否则 ntdll 的 PE/Unix 两半版本不一致。
-`ntdll.so` 则由启动 app 的 `NOP_BRIDGE_NTDLL` 指向视图生效，不需要进前缀。 它由启动 app 的 `NOP_BRIDGE_NTDLL` 指向视图生效，
-只需保证这两点：
+必须与视图里的 `ntdll.so` 来自同一次构建，否则 ntdll 的 PE/Unix 两半版本不一致。
+`ntdll.so` 由启动 app 的 `NOP_BRIDGE_NTDLL` 指向视图生效，所以视图里必须满足：
 
 1. `local/runtime-modules/lib/wine/x86_64-unix/ntdll.so` 是打过补丁的那份；
 2. 同层级下 `lib/wine/x86_64-windows/ntdll.dll` **必须同时存在**。
 
 第 2 条容易踩坑：`ntdll` 是 Unix/PE 成对的，只覆盖 `.so` 而缺了 `.dll` 会以
-`error c0000135` 启动失败。用 `prepare_runtime.py` 生成视图就不会漏。
+`error c0000135` 启动失败。用 `prepare_runtime.py` 生成视图，两件都不会漏。
 
 > **前缀与视图两层都要更新。** 视图遮蔽前缀，只更新一层会出现「视图已修好、前缀还是旧版」
 > 的不一致。
