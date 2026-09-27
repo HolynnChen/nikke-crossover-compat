@@ -1,29 +1,38 @@
-# 安装指南 / Installation Guide
+# 安装指南
 
-从零开始把《胜利女神：NIKKE》Windows PC 版跑到 Apple Silicon Mac 上，
-以及后续如何更新本项目的兼容补丁。
-
-本指南基于 2026-09-22 ~ 09-23 的实际安装过程整理，
-所有命令与路径均在本机验证过。
+把《胜利女神：NIKKE》Windows PC 国际服跑到 Apple Silicon Mac 上。
 
 > **只想一条命令装完？** 在仓库根目录执行
-> `scripts/install_all.sh --installer <游戏安装包.exe>`，
-> 它会自动完成下面第三～四节的全部工作（含下载与校验 CrossOver 源码包），
-> 并建好启动 app。可重复执行，已完成的步骤会跳过。
-> 本指南其余部分是对应的手动分步说明。
+> `scripts/install_all.sh --installer <游戏安装包.exe>`。
+> 它按下表的顺序自动完成第二～五节并建好启动 app，可重复执行、已完成步骤会跳过。
+> 本指南其余部分是同一流程的手动分步版。
+
+## 顺序要求
+
+四步之间有硬依赖，**顺序不能调换**：
+
+| 顺序 | 步骤 | 为什么必须在这里 |
+|---|---|---|
+| 1 | 构建兼容补丁（含运行时视图）| 后面每一步都要用视图里的 Wine 加载器和库 |
+| 2 | 创建前缀 | `create_prefix.sh` 直接依赖视图（`bin/wineloader`、`lib/wine/x86_64-*`），视图不在就报错退出 |
+| 3 | **把补丁模块装进前缀** | 启动器靠它们才能渲染界面、下载资源 |
+| 4 | **安装游戏** | 必须在补丁之后；反过来会黑屏、卡在「正在初始化」、下不动资源 |
+
+最常被搞反的是第 3、4 步。
 
 ---
 
 ## 目录
 
 - [一、准备工作](#一准备工作)
-- [二、创建前缀并安装游戏](#二创建前缀并安装游戏)
-- [三、构建兼容补丁](#三构建兼容补丁)
-- [四、安装到 Wine 前缀](#四安装到-wine-前缀)
-- [五、验证安装](#五验证安装)
-- [六、日常启动](#六日常启动)
-- [七、更新到新版本](#七更新到新版本)
-- [八、故障排查](#八故障排查)
+- [二、构建兼容补丁](#二构建兼容补丁)
+- [三、创建前缀](#三创建前缀)
+- [四、把补丁装进前缀](#四把补丁装进前缀)
+- [五、安装游戏](#五安装游戏)
+- [六、验证](#六验证)
+- [七、日常启动](#七日常启动)
+- [八、更新到新版本](#八更新到新版本)
+- [九、故障排查](#九故障排查)
 
 ---
 
@@ -34,27 +43,24 @@
 | 项 | 版本 |
 |---|---|
 | 硬件 | Apple Silicon（M 系列）；实测 **Apple M4 Pro**（Mac16,7）|
-| macOS | **26.6.2**（25G83，实测）|
-| CrossOver | 26.3 |
+| macOS | **26.6.2**（实测）|
+| CrossOver | **26.3**（`brew install --cask crossover`）|
 | 游戏 | NIKKE PC 国际服 **152.8.13**（实测）|
 | Rosetta | 已安装 |
 | Python | 3.x |
 | Xcode CLT | 已安装 |
-| Bison | 3.x（`brew install bison`）|
-| MinGW-w64 | 用于构建 Windows 探针 |
-
-> **CrossOver 用 26.3**（当前正式版；补丁同时适用于 26.1 和 26.3）。补丁按 26.3 的源码锚定，
-> 运行时视图里 800 多个文件也是指向 CrossOver 安装目录的符号链接 —— 升级 CrossOver 后，
-> 必须用同一版本的源码重新构建模块。
-
-### 安装依赖
+| Bison | 3.x |
+| MinGW-w64 | 构建 Windows 探针用 |
 
 ```sh
 brew install bison mingw-w64
 ```
 
-Bison 默认路径为 `/opt/homebrew/opt/bison/bin/bison`，
-不同安装位置用 `--bison` 指定。
+Bison 默认在 `/opt/homebrew/opt/bison/bin/bison`，装在别处用 `--bison` 指定。
+
+> 补丁按 **26.3** 的源码锚定，构建时会校验源码包 SHA-256；运行时视图里 800 多个文件是
+> **指向 CrossOver 安装目录的符号链接**，所以升级 CrossOver 后必须用同版本源码重新构建模块。
+> 补丁同时适用于 26.1 和 26.3。
 
 ### 目录约定
 
@@ -71,55 +77,11 @@ Wine 前缀 ~/Library/Application Support/NIKKE-Wine
 
 ---
 
-## 二、创建前缀并安装游戏
-
-> 已经装好、官方启动器能打开能登录的话，跳到[第三节](#三构建兼容补丁)。
-
-**全程不需要打开 CrossOver 的图形界面，也不需要在它里面建容器。** 用到的只是 CrossOver
-装在机器上的 Wine 运行库；前缀由本项目用命令行创建，是一个**普通 Wine 前缀**，不会出现在
-CrossOver 的容器列表里。
-
-> ⚠️ 这一步需要先完成[第三节](#三构建兼容补丁)，因为创建前缀要用到本项目的运行时。
-
-### 2.1 从官网下载 PC 版
-
-下载 **NIKKE PC 国际服**安装包（`NIKKE.PC_Offcial_GL_<版本>.exe`）。
-本指南验证版本：`152.8.13`。
-
-### 2.2 创建前缀
-
-```sh
-scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine"
-```
-
-`wineboot` 建前缀时会打印一些 `err:` 行（`cxcompatdb`、`setupapi` 之类），那是这一阶段的
-正常噪音，不影响结果。看到 `prefix created` 就是成功了。
-
-### 2.3 安装游戏
-
-```sh
-scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" \
-    ~/Downloads/NIKKE.PC_Offcial_GL_<版本>.exe
-```
-
-这一步用的还是 2.2 那个脚本：前缀已经存在，它会跳过创建，只运行安装包。
-按安装程序提示完成，安装路径保持默认 `C:\NIKKE\Launcher`。
-
-### 2.4 首次启动，让游戏下载资源
-
-用本项目的启动方式打开启动器（见[第六节](#六日常启动)），登录并**让它把资源下完**。
-
-> ⚠️ 首次下载量很大（>10 GB），游戏自身的下载器较慢（约 0.3 MB/s），网络不佳时要数小时。
-
-> 若此时启动器黑屏，是因为兼容补丁还没装上 —— 先做完第三、四节再回来。
-
----
-
-## 三、构建兼容补丁
+## 二、构建兼容补丁
 
 以下命令**在仓库根目录执行**。
 
-### 3.1 构建原生兼容层
+### 2.1 构建 macOS 侧兼容层
 
 ```sh
 cd /path/to/nikke-crossover-compat
@@ -127,15 +89,13 @@ make
 make test
 ```
 
-### 3.2 下载 CrossOver 源码包
-
-从 CodeWeavers 下载官方源码：
+### 2.2 下载 CrossOver 源码包
 
 ```sh
 curl -LO https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.3.0.tar.gz
 ```
 
-### 3.3 构建 Wine 补丁模块
+### 2.3 构建 Wine 补丁模块
 
 ```sh
 python3 scripts/build_wine_modules.py \
@@ -143,19 +103,17 @@ python3 scripts/build_wine_modules.py \
     --output local/wine-modules
 ```
 
-这个脚本会按顺序应用以下补丁：
+脚本按固定顺序应用补丁，并校验源码包 SHA-256，不匹配会拒绝构建：
 
 | 补丁 | 作用 |
 |---|---|
 | `crossover-kernel.patch` | Rosetta NOP 指令与特权异常处理 |
 | `crossover-thread-process-experimental.patch` | 线程所属进程查询 |
-| `crossover-september-update.patch` | 152.8.11 驱动入口与内存映射 |
+| `crossover-september-update.patch` | 驱动入口与内存映射 |
 | `crossover-ace-kernel-exports.patch` | **ACE 反作弊所需的内核导出** |
 | `crossover-mf-software.patch` | 视频软件回退（修复黑屏）|
 
-脚本会校验源码包的固定 SHA-256，不匹配会拒绝构建。
-
-### 3.4 生成运行时
+### 2.4 生成运行时视图
 
 ```sh
 python3 scripts/prepare_runtime.py \
@@ -163,20 +121,33 @@ python3 scripts/prepare_runtime.py \
     --modules local/wine-modules/build
 ```
 
-这一步除覆盖 5 个补丁模块外，还会把 **DXVK** 放进视图，并把视图里 `lsass.exe` 的 PE
-子系统改成 **GUI**（否则每次启动都会弹出一个关不掉的 conhost 窗口）。
-两者都必须在视图里生效：视图挂在 `WINEDLLPATH` 上，**会遮蔽前缀**。
+这一步除放入 5 个补丁模块外，还会把 **DXVK** 放进视图，并把视图里 `lsass.exe` 的 PE
+子系统改成 **GUI**（否则每次启动都会多出一个关不掉的 conhost 窗口）。
+
+两者都必须在视图里生效：视图挂在 `WINEDLLPATH` 上并**遮蔽前缀**。
 
 ---
 
-## 四、安装到 Wine 前缀
+## 三、创建前缀
 
-### 4.1 把模块装进前缀
+**全程不需要打开 CrossOver 的图形界面，也不需要在它里面建容器。** 用到的只是 CrossOver
+装在机器上的 Wine 运行库；前缀由本项目用命令行创建，是一个**普通 Wine 前缀**，
+不会出现在 CrossOver 的容器列表里。
 
-如果已经有一个装好 NIKKE 的前缀，只替换兼容层模块。
+```sh
+scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine"
+```
 
-共替换 **5 个文件**：4 个 PE 模块在 `x86_64-windows/`，1 个 `ntdll.so` 在
-`x86_64-unix/`。完整清单与哈希见 [5.1](#51-核对模块哈希)。
+`wineboot` 建前缀时会打印一些 `err:` 行（`cxcompatdb`、`setupapi` 之类），
+那是这一阶段的正常噪音。看到 `prefix created` 就是成功了。
+
+---
+
+## 四、把补丁装进前缀
+
+> ⚠️ **这一步必须在安装游戏之前做完。** 少了补丁，启动器会黑屏、卡在「正在初始化」、下不动资源。
+
+共替换 **4 个 PE 模块**：
 
 ```sh
 PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
@@ -185,118 +156,109 @@ RUNTIME="$PWD/local/runtime-modules"
 # 备份原文件
 mkdir -p /tmp/nikke-compat-backup
 for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
-  cp "$PREFIX/drive_c/windows/system32/$f" /tmp/nikke-compat-backup/ 2>/dev/null
+  cp -p "$PREFIX/drive_c/windows/system32/$f" /tmp/nikke-compat-backup/ 2>/dev/null
 done
 
-# 安装 4 个 PE 模块
+# 安装
 for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
   cp "$RUNTIME/lib/wine/x86_64-windows/$f" "$PREFIX/drive_c/windows/system32/"
 done
 ```
 
-**`ntdll.so` 不需要拷进前缀。** 它由 app 的 `NOP_BRIDGE_NTDLL` 指向运行时视图
-生效，所以只需保证这两点：
+**`ntdll.so` 不需要拷进前缀。** 它由启动 app 的 `NOP_BRIDGE_NTDLL` 指向视图生效，
+只需保证这两点：
 
 1. `local/runtime-modules/lib/wine/x86_64-unix/ntdll.so` 是打过补丁的那份；
-2. 同一目录层级下 `lib/wine/x86_64-windows/ntdll.dll` **必须同时存在**。
+2. 同层级下 `lib/wine/x86_64-windows/ntdll.dll` **必须同时存在**。
 
-第 2 条容易踩坑：`ntdll` 是 Unix/PE 成对的，只覆盖 `.so` 而缺了 PE 的 `.dll`
-会直接以 `error c0000135` 启动失败。用 `prepare_runtime.py` 生成视图就不会漏
-（脚本会从 CrossOver 原样拷入那份未修改的 `ntdll.dll`）。
+第 2 条容易踩坑：`ntdll` 是 Unix/PE 成对的，只覆盖 `.so` 而缺了 `.dll` 会以
+`error c0000135` 启动失败。用 `prepare_runtime.py` 生成视图就不会漏。
 
-> **前缀与视图两层都要更新。** 视图通过 `WINEDLLPATH` 挂在最前面并遮蔽前缀，
-> 只更新一层会出现「视图已修好、前缀还是旧版」的不一致。
+> **前缀与视图两层都要更新。** 视图遮蔽前缀，只更新一层会出现「视图已修好、前缀还是旧版」
+> 的不一致。
 
-### 4.2 例外：安装是 CrossOver 容器时
-
-本指南第二节建的是**纯 Wine 前缀**，用上面的方式即可。
-
-如果你的 NIKKE 是用 CrossOver 图形界面（或 `cxbottle --create`）装的 **CrossOver 容器**，
-并且你想要一个**独立副本** —— 原容器完全不动，另有一个带 CrossOver 菜单入口的克隆 ——
-可以用 `scripts/install_crossover_entry.py`，参数见 `--help`。
+> 已经有装好 NIKKE 的前缀（例如用 CrossOver 图形界面装的容器）时，只做本节即可。
+> 若你想在原容器之外另建一个带 CrossOver 菜单入口的独立副本，
+> 用 `scripts/install_crossover_entry.py`，参数见 `--help`。
 
 ---
 
-## 五、验证安装
+## 五、安装游戏
 
-### 5.1 核对模块哈希
+### 5.1 从官网下载 PC 版
+
+下载 **NIKKE PC 国际服**安装包（`NIKKE.PC_Offcial_GL_<版本>.exe`）。本指南验证版本：`152.8.13`。
+
+### 5.2 运行安装程序
 
 ```sh
-RUNTIME="$PWD/local/runtime-modules"
-for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
-  md5 -q "$RUNTIME/lib/wine/x86_64-windows/$f"
-done
-md5 -q "$RUNTIME/lib/wine/x86_64-unix/ntdll.so"
+scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" \
+    ~/Downloads/NIKKE.PC_Offcial_GL_<版本>.exe
 ```
 
-本机验证值：
+前缀已存在，脚本会跳过创建、只运行安装包。按提示完成，
+安装路径保持默认 `C:\NIKKE\Launcher`。
 
-```
-ntoskrnl.exe     553a755df4792272d091168c7a4ac189
-mfplat.dll       9e05b449b0042c1828db913def2a1bcc
-mfreadwrite.dll  1d3509c2e55d5581fc2e26426b1fe440
-lsass.exe        b09816da5eb8d431c748f7709ef7b390
-ntdll.so         ae6489f07e27c0ddbf541d2db82446c9   （必须是 x86_64）
-```
+### 5.3 创建启动 app
 
-> `ntdll.so` **必须**是 `x86_64`。本机默认编译出来是 `arm64`，装上去会在
-> bootstrap 阶段以一句难懂的架构错误失败。用 `lipo -archs` 确认。
-
-### 5.2 确认 ACE 接口已导出
-
-构建后的 `ntoskrnl.exe` 应包含这些导出（ACE 反作弊调用）：
-
-```
-KeTryToAcquireGuardedMutex
-KeIpiGenericCall
-KeGetProcessorNumberFromIndex
-KeRevertToUserGroupAffinityThread
-KeSetSystemGroupAffinityThread
-ObDereferenceObjectDeferDelete
-PsGetCurrentThreadTeb
+```sh
+scripts/create_launch_app.sh
 ```
 
-缺少 `KeAcquireGuardedMutex` 会导致 ACE 报
-`unimplemented function ntoskrnl.exe.KeAcquireGuardedMutex` 并拒绝启动。
+生成 `~/Applications/NIKKE Wine.app`（自包含，Wine 加载器在它内部）。
 
-### 5.3 跑接口测试
+---
+
+## 六、验证
 
 ```sh
 python3 scripts/test_wine_modules.py \
-    --prefix "$PREFIX" \
+    --prefix "$HOME/Library/Application Support/NIKKE-Wine" \
     --runtime local/runtime-modules
 ```
 
+再确认 `ntdll.so` 的架构是 **x86_64**：
+
+```sh
+lipo -archs local/runtime-modules/lib/wine/x86_64-unix/ntdll.so
+```
+
+> 必须是 `x86_64`。装成 `arm64` 会在 bootstrap 阶段以一句难懂的架构错误失败。
+
 ---
 
-## 六、日常启动
+## 七、日常启动
 
-**双击 `~/Applications/NIKKE Wine.app`，然后点「启动」。**
+**双击 `~/Applications/NIKKE Wine.app`，点「启动」。**
 
-该 app 是自包含的（Wine 加载器在它内部），内部调用 `scripts/launch_nikke.sh`，
-脚本默认值就是已验证配置（两个 MF 开关、DXVK 与 d3d native 覆盖）。等价命令行：
+等价命令行：
 
 ```sh
 cd /path/to/nikke-crossover-compat && scripts/launch_nikke.sh
 ```
 
-> 本项目的安装不依赖 CrossOver 的容器菜单 —— 用上面这个 app 启动即可。
+启动脚本默认值就是已验证配置（两个 Media Foundation 开关、`CX_GRAPHICS_BACKEND=dxvk`、
+d3d native 覆盖），用启动 app 就不会漏。
 
-启动配置使用 **DXVK**。在 CrossOver 里改图形后端不会自动改写此专用配置。
+### 首次启动：让游戏下载资源
 
-需要更清晰的画面时，在容器右侧开启**高分辨率模式**并重启容器。
+首次打开启动器后登录，**让它把资源下完**再点「启动」。
+
+> 首次下载量很大（>10 GB），游戏自身下载器较慢，网络不佳时要数小时。
+
+> 画面模糊时在 CrossOver 容器设置里开启**高分辨率模式**并重启容器。
 
 > ⚠️ 不要执行 `wineserver -k` —— 会杀掉当前所有 Wine 会话。
 
 ---
 
-## 七、更新到新版本
+## 八、更新到新版本
 
-### 7.1 在游戏内更新
+### 8.1 在游戏内更新
 
-游戏出新版本时，先让官方启动器自己把更新下完。
+游戏出新版本时，先让官方启动器把更新下完。
 
-### 7.2 更新兼容补丁（如果新版本需要）
+### 8.2 更新兼容补丁（如果新版本需要）
 
 ```sh
 cd /path/to/nikke-crossover-compat
@@ -309,8 +271,7 @@ python3 scripts/build_wine_modules.py \
 python3 scripts/prepare_runtime.py \
     --output local/runtime-modules-new --modules local/wine-modules-new/build
 
-# 备份并替换全部 4 个模块（与第四节相同 ——
-# 漏掉 mfplat.dll / mfreadwrite.dll 会让剧情重新卡死）
+# 备份并替换全部 4 个模块（与第四节相同；漏掉 mfplat / mfreadwrite 会让剧情重新卡死）
 PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
 mkdir -p /tmp/nikke-compat-backup
 for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
@@ -324,87 +285,56 @@ mv local/runtime-modules local/runtime-modules-old
 mv local/runtime-modules-new local/runtime-modules
 ```
 
-**确认新版本可用之前，保留旧文件。** 回滚：
+**确认新版本可用之前保留旧文件。** 回滚：
 
 ```sh
-cp /tmp/nikke-compat-backup/* \"$PREFIX/drive_c/windows/system32/\"
+cp /tmp/nikke-compat-backup/* "$PREFIX/drive_c/windows/system32/"
 mv local/runtime-modules local/runtime-modules-bad
 mv local/runtime-modules-old local/runtime-modules
 ```
 
-## 八、故障排查
+---
 
+## 九、故障排查
+
+### 启动器黑屏 / 卡在「正在初始化」 / 下不动资源
+
+补丁没装进前缀，或者前缀与视图不一致。回到[第四节](#四把补丁装进前缀)重做，
+并确认前缀与视图**两层**都已更新。
 
 ### 进剧情就卡死（进程还在、CPU 100%、日志不动）
 
-两个 Media Foundation 开关**没有配对**。`NOP_BRIDGE_MF_NO_DXGI=1` 单独设置是半配置状态：
+两个 Media Foundation 开关**没有配对**。只设 `NOP_BRIDGE_MF_NO_DXGI=1` 是半配置状态：
 Unity 拿不到 DXGI device manager 而退到软件回退，reader 侧却仍按 D3D 帧预期工作，
-视频管线停摆。补上 `NOP_BRIDGE_MF_SOFTWARE=1` 即可。
-`scripts/launch_nikke.sh` 默认已带齐；用自建启动 app 就不会遇到。
+视频管线停摆。补上 `NOP_BRIDGE_MF_SOFTWARE=1` 即可。`scripts/launch_nikke.sh` 默认已带齐。
 
 ### 每次启动都弹出一个 conhost 窗口，且不随启动器关闭
 
 `lsass.exe` 是 CONSOLE 子系统，Wine 为该服务分配了控制台窗口；窗口属于服务而非启动器，
-所以关启动器不会关它。把 `lsass.exe` 的 PE 子系统改成 GUI 即可（`prepare_runtime.py`
-会自动做），改完记得**前缀与视图两层都更新**。
+所以关启动器不会关它。把它的 PE 子系统改成 GUI 即可（`prepare_runtime.py` 会自动做），
+改完记得**前缀与视图两层都更新**。
 
 ### 启动时报 `unimplemented function ntoskrnl.exe.KeAcquireGuardedMutex`
 
-装的是 CrossOver 原版 `ntoskrnl.exe`，不是本项目构建的。
-重新执行[第四节](#四安装到-wine-前缀)。
+装的是 CrossOver 原版 `ntoskrnl.exe`，不是本项目构建的。重做[第四节](#四把补丁装进前缀)。
 
-> 注意：本项目构建的 `ntoskrnl.exe` 是 CrossOver 原版的**超集**，
-> 替换回去会**破坏 ACE**。
-
-### 启动器黑屏
-
-`crossover-mf-software.patch` 负责这部分（视频走软件回退）。
-确认补丁已应用。
+> 本项目构建的 `ntoskrnl.exe` 是 CrossOver 原版的**超集**，替换回原版会**破坏 ACE**。
+> 构建后的 `ntoskrnl.exe` 应包含 `KeTryToAcquireGuardedMutex`、`KeIpiGenericCall`、
+> `KeGetProcessorNumberFromIndex`、`PsGetCurrentThreadTeb` 等 ACE 所需导出。
 
 ### ACE 相关报错
 
-两个后台 ACE CORE 驱动进程仍会异常退出（已知限制）。
-可玩不代表所有保护组件都正常。
+两个后台 ACE CORE 驱动进程仍会异常退出（已知限制）。可玩不代表所有保护组件都正常。
 
 ### 游戏更新后无法启动
 
-游戏大版本更新常会引入新的内核接口调用。
-先用 `KeBugCheck` 日志确认缺什么：
+游戏大版本更新常会引入新的内核接口调用。先用 `KeBugCheck` 日志确认缺什么：
 
 ```
 ERR( "KeBugCheck %lx called from %p\n", code, __builtin_return_address(0) );
 ```
 
 然后在 `patches/crossover-ace-kernel-exports.patch` 里补上对应实现。
-
-### 画面模糊
-
-在 CrossOver 容器设置里开启**高分辨率模式**并重启容器。
-
----
-
-## 附：完整命令速查
-
-```sh
-# 一次性全流程
-cd /path/to/nikke-crossover-compat
-make && make test
-
-curl -LO https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.3.0.tar.gz
-
-python3 scripts/build_wine_modules.py \
-    --archive "$PWD/crossover-sources-26.3.0.tar.gz" \
-    --output local/wine-modules
-
-python3 scripts/prepare_runtime.py \
-    --output local/runtime-modules \
-    --modules local/wine-modules/build
-
-PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
-RUNTIME="$PWD/local/runtime-modules"
-cp "$RUNTIME/lib/wine/x86_64-windows/"{ntoskrnl.exe,lsass.exe} \
-   "$PREFIX/drive_c/windows/system32/"
-```
 
 ---
 

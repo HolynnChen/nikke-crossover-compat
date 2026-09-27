@@ -68,20 +68,22 @@ python3 scripts/build_wine_modules.py \
 python3 scripts/prepare_runtime.py \
     --output local/runtime-modules --modules local/wine-modules/build
 
-# 4. 创建前缀并安装游戏（不需要打开 CrossOver 界面，也不会建 CrossOver 容器）
-#    第二个参数是游戏安装包；省略它就只创建前缀，之后再单独跑安装包
-scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" <安装包.exe>
+# 4. 创建前缀（需要第 3 步的视图：缺了它会直接报 runtime view is missing）
+scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine"
 
-# 5. 把运行时模块装进前缀，并创建启动 app
+# 5. 先装补丁，再装游戏 —— 顺序不能反
+#    少了补丁，启动器会黑屏、卡在「正在初始化」、下不动资源
 for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
   cp "local/runtime-modules/lib/wine/x86_64-windows/$f" \
      "$HOME/Library/Application Support/NIKKE-Wine/drive_c/windows/system32/"
 done
-scripts/create_launch_app.sh
+scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" <安装包.exe>
 
+# 6. 创建启动 app
+scripts/create_launch_app.sh
 ```
 
-完整说明见 **[安装指南](docs/INSTALL.zh-CN.md)**。已经装好 NIKKE 的话，跳过第 4 步。
+完整说明见 **[安装指南](docs/INSTALL.zh-CN.md)**。已经装好 NIKKE 的话，跳过第 5 步里的安装程序，只做补丁替换。
 **安装和游玩全程都不需要 CrossOver 的图形界面。**
 
 </details>
@@ -111,7 +113,7 @@ cd <本仓库> && scripts/launch_nikke.sh
 
 ## 出问题了
 
-先看[安装指南的故障排查](docs/INSTALL.zh-CN.md#八故障排查)。最常见的是：
+先看[安装指南的故障排查](docs/INSTALL.zh-CN.md#九故障排查)。最常见的是：
 
 - **进剧情卡死**（进程还在、CPU 100%、日志不动）：两个 MF 开关没配对。
 - **每次启动弹出黑窗口且关不掉**：`lsass.exe` 的子系统没改，或只改了一层。

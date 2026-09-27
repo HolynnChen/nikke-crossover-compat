@@ -1,128 +1,86 @@
 # Installation Guide
 
-Getting *Goddess of Victory: NIKKE* (Windows PC) running on an Apple Silicon Mac,
-plus how to update this project's compatibility patches afterwards.
+Running NIKKE: Goddess of Victory (Windows PC, international) on an Apple Silicon Mac.
 
-Based on the actual installation performed 2026-09-22 ~ 09-23.
-Every command and path below was verified on the reference machine.
+> **Just want one command?** From the repository root run
+> `scripts/install_all.sh --installer <game-installer.exe>`.
+> It does sections two through five in the order below and creates the launcher app. It can be
+> re-run; finished steps are skipped. The rest of this guide is the same flow, step by step.
 
-> **Want one command instead?** From the repository root run
-> `scripts/install_all.sh --installer <installer.exe>`. It performs everything in
-> sections 3 and 4 for you (including downloading and verifying the CrossOver source
-> archive) and creates the launcher app. Re-running is safe -- finished steps are
-> skipped. The rest of this guide is the same work, step by step.
+## Order matters
+
+The four steps depend on each other, so **they cannot be reordered**:
+
+| # | Step | Why it has to be here |
+|---|---|---|
+| 1 | Build the compatibility patches (including the runtime view) | Everything after it uses the Wine loader and libraries from the view |
+| 2 | Create the prefix | `create_prefix.sh` needs the view (`bin/wineloader`, `lib/wine/x86_64-*`) and exits if it is missing |
+| 3 | **Install the patched modules into the prefix** | The launcher needs them to render and to download resources |
+| 4 | **Install the game** | Must come after the patches; the other way round gives a black launcher, a stall at "initialising" and downloads that never move |
+
+Steps 3 and 4 are the ones people get backwards.
 
 ---
 
 ## Contents
 
-- [1. Prerequisites](#1-prerequisites)
-- [2. Creating the prefix and installing NIKKE](#2-creating-the-prefix-and-installing-nikke)
-- [3. Building the compatibility patches](#3-building-the-compatibility-patches)
-- [4. Installing into the Wine prefix](#4-installing-into-the-wine-prefix)
-- [5. Verifying the installation](#5-verifying-the-installation)
-- [6. Launching](#6-launching)
-- [7. Updating](#7-updating)
-- [8. Troubleshooting](#8-troubleshooting)
+- [1. Before you start](#1-before-you-start)
+- [2. Build the compatibility patches](#2-build-the-compatibility-patches)
+- [3. Create the prefix](#3-create-the-prefix)
+- [4. Install the patches into the prefix](#4-install-the-patches-into-the-prefix)
+- [5. Install the game](#5-install-the-game)
+- [6. Verify](#6-verify)
+- [7. Launching](#7-launching)
+- [8. Updating](#8-updating)
+- [9. Troubleshooting](#9-troubleshooting)
 
 ---
 
-## 1. Prerequisites
+## 1. Before you start
+
+### Requirements
 
 | Item | Version |
 |---|---|
-| Hardware | Apple Silicon (M-series); measured on **Apple M4 Pro** (Mac16,7) |
-| macOS | **26.6.2** (25G83, measured) |
-| CrossOver | 26.3 |
-| Game | NIKKE PC International **152.8.13** (measured) |
+| Hardware | Apple Silicon (M series); tested on an **Apple M4 Pro** (Mac16,7) |
+| macOS | **26.6.2** (tested) |
+| CrossOver | **26.3** (`brew install --cask crossover`) |
+| Game | NIKKE PC International **152.8.13** (tested) |
 | Rosetta | installed |
 | Python | 3.x |
 | Xcode CLT | installed |
-| Bison | 3.x (`brew install bison`) |
-| MinGW-w64 | for building Windows probes |
-
-> **Use CrossOver 26.3** (the current release; the patches apply to 26.1 and 26.3 alike). They are
-> anchored to 26.3's source, and more than 800 files in the runtime view are symlinks into
-> CrossOver's install directory -- so after upgrading CrossOver you must rebuild the modules
-> from that same version's source.
+| Bison | 3.x |
+| MinGW-w64 | to build the Windows probe |
 
 ```sh
 brew install bison mingw-w64
 ```
 
-Bison defaults to `/opt/homebrew/opt/bison/bin/bison`; override with `--bison`.
+Bison is normally at `/opt/homebrew/opt/bison/bin/bison`; pass `--bison` if yours is elsewhere.
 
-### Path conventions
+> The patches are anchored to 26.3's source and the build verifies the archive's SHA-256. More than
+> 800 files in the runtime view are **symlinks into CrossOver's install directory**, so after
+> upgrading CrossOver you must rebuild the modules from that same version's source. The patches
+> apply to 26.1 and 26.3 alike.
+
+### Paths used below
 
 ```
-repo        /path/to/nikke-crossover-compat
-Wine prefix ~/Library/Application Support/NIKKE-Wine
-build       <repo>/local/runtime-modules
+repository  /path/to/nikke-crossover-compat
+prefix      ~/Library/Application Support/NIKKE-Wine
+build       <repository>/local/runtime-modules
 launcher    ~/Applications/NIKKE Wine.app
 ```
 
-> Below, `/path/to/nikke-crossover-compat` stands for wherever you cloned this
-> repository; substitute your own path.
+> `/path/to/nikke-crossover-compat` stands for wherever you cloned this repository.
 
 ---
 
-## 2. Creating the prefix and installing NIKKE
+## 2. Build the compatibility patches
 
-> Skip to [section 3](#3-building-the-compatibility-patches) if the launcher is
-> already installed, opens, and logs in.
+Run these **from the repository root**.
 
-**None of this needs CrossOver's graphical interface, and no bottle is created in
-CrossOver.** Only the Wine libraries that CrossOver installs are used; the prefix is
-created from the command line by this project and is a **plain Wine prefix**, so it
-never appears in CrossOver's bottle list.
-
-> Note: this step needs [section 3](#3-building-the-compatibility-patches) done first,
-> because creating the prefix uses this project's runtime.
-
-### 2.1 Download the PC build
-
-Get the **NIKKE PC International** installer (`NIKKE.PC_Offcial_GL_<version>.exe`).
-Verified version: `152.8.13`.
-
-### 2.2 Create the prefix
-
-```sh
-scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine"
-```
-
-`wineboot` prints a number of `err:` lines while building the prefix (`cxcompatdb`,
-`setupapi` and friends). They are normal noise at this stage and do not affect the
-result; `prefix created` means it worked.
-
-### 2.3 Install the game
-
-```sh
-scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" \
-    ~/Downloads/NIKKE.PC_Offcial_GL_<version>.exe
-```
-
-This uses the same script as 2.2: the prefix already exists, so it skips creation and
-only runs the installer. Follow the installer, keeping the default install path
-`C:\NIKKE\Launcher`.
-
-### 2.4 First launch -- let it download assets
-
-Open the launcher the way this project does (see [section 6](#6-launching)), log in,
-and **let it finish downloading all assets**.
-
-> The initial download exceeds 10 GB and the game's own downloader is slow
-> (~0.3 MB/s), so it can take hours on a poor connection.
-
-> If the launcher shows a black screen here, the compatibility patches are not
-> installed yet -- finish sections 3 and 4 first.
-
----
-
-## 3. Building the compatibility patches
-
-Run everything from the repository root.
-
-### 3.1 Build the native compatibility layer
+### 2.1 Build the macOS-side layer
 
 ```sh
 cd /path/to/nikke-crossover-compat
@@ -130,13 +88,13 @@ make
 make test
 ```
 
-### 3.2 Fetch the CrossOver source
+### 2.2 Download the CrossOver source archive
 
 ```sh
 curl -LO https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.3.0.tar.gz
 ```
 
-### 3.3 Build the Wine patch modules
+### 2.3 Build the patched Wine modules
 
 ```sh
 python3 scripts/build_wine_modules.py \
@@ -144,20 +102,18 @@ python3 scripts/build_wine_modules.py \
     --output local/wine-modules
 ```
 
-Patches applied, in order:
+The script applies the patches in a fixed order and verifies the archive's SHA-256, refusing to
+build on a mismatch:
 
-| Patch | Purpose |
+| Patch | What it does |
 |---|---|
-| `crossover-kernel.patch` | Rosetta NOP forms and privileged-exception handling |
-| `crossover-thread-process-experimental.patch` | thread owning-process queries |
-| `crossover-september-update.patch` | 152.8.11 driver entry points and memory mapping |
-| `crossover-ace-kernel-exports.patch` | **kernel exports required by ACE** |
-| `crossover-mf-software.patch` | video software fallback (fixes the black screen) |
+| `crossover-kernel.patch` | Rosetta NOP instructions and privileged exception handling |
+| `crossover-thread-process-experimental.patch` | thread-to-process lookup |
+| `crossover-september-update.patch` | driver entry point and memory mapping |
+| `crossover-ace-kernel-exports.patch` | **the kernel exports ACE needs** |
+| `crossover-mf-software.patch` | software video fallback (fixes the black screen) |
 
-The script verifies a pinned SHA-256 of the source archive and refuses to
-build on mismatch.
-
-### 3.4 Produce the runtime
+### 2.4 Produce the runtime view
 
 ```sh
 python3 scripts/prepare_runtime.py \
@@ -165,158 +121,164 @@ python3 scripts/prepare_runtime.py \
     --modules local/wine-modules/build
 ```
 
-Besides the five patched modules, this step places **DXVK** into the view and flips the
-view's `lsass.exe` PE subsystem to **GUI** (otherwise every launch pops up a conhost window
-that will not close). Both must take effect inside the view: it sits on `WINEDLLPATH` and
-**shadows the prefix**.
+Besides the five patched modules this puts **DXVK** into the view and flips the view's
+`lsass.exe` to the **GUI** subsystem (otherwise every launch leaves behind a conhost window you
+cannot close).
+
+Both have to take effect in the view: it is mounted on `WINEDLLPATH` and **shadows the prefix**.
 
 ---
 
-## 4. Installing into the Wine prefix
+## 3. Create the prefix
 
-### 4.1 Installing the modules
+**No CrossOver GUI is involved, and no CrossOver bottle is created.** Only the Wine libraries
+CrossOver installs are used; the prefix is created from the command line and is a **plain Wine
+prefix**, so it never shows up in CrossOver's bottle list.
 
-Replace only the compatibility modules:
+```sh
+scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine"
+```
 
-**Five files** are replaced: four under `x86_64-windows/`, one under
-`x86_64-unix/`. The full list and hashes are in [5.1](#51-check-module-hashes).
+`wineboot` prints a number of `err:` lines while creating it (`cxcompatdb`, `setupapi` and so on).
+That noise is normal. `prefix created` means it worked.
+
+---
+
+## 4. Install the patches into the prefix
+
+> ⚠️ **This has to be done before installing the game.** Without the patches the launcher comes up
+> black, stalls at "initialising" and cannot download resources.
+
+Four PE modules are replaced:
 
 ```sh
 PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
 RUNTIME="$PWD/local/runtime-modules"
 
-# back up the originals
+# keep the originals
 mkdir -p /tmp/nikke-compat-backup
 for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
-  cp "$PREFIX/drive_c/windows/system32/$f" /tmp/nikke-compat-backup/ 2>/dev/null
+  cp -p "$PREFIX/drive_c/windows/system32/$f" /tmp/nikke-compat-backup/ 2>/dev/null
 done
 
+# install
 for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
   cp "$RUNTIME/lib/wine/x86_64-windows/$f" "$PREFIX/drive_c/windows/system32/"
 done
 ```
 
-> The Unix-side `ntdll.so` (user-mode Rosetta NOP emulation) reaches Wine
-> through the app's `NOP_BRIDGE_NTDLL`, which points at the runtime view, so it
-> does **not** need copying into the prefix. Two things must hold:
-> `local/runtime-modules/lib/wine/x86_64-unix/ntdll.so` is the patched one, and
-> `lib/wine/x86_64-windows/ntdll.dll` **exists alongside it**. ntdll is a
-> Unix/PE pair; overlaying the `.so` without the PE `.dll` fails to start with
-> > **Update both the prefix and the view.** The view sits on `WINEDLLPATH` and shadows the
-> prefix, so updating only one layer leaves them inconsistent.
+**`ntdll.so` does not go into the prefix.** The launcher app points `NOP_BRIDGE_NTDLL` at the view,
+so only two things matter:
 
-`error c0000135`. Generating the view with `prepare_runtime.py` cannot miss
-> this, because the script copies that unmodified `ntdll.dll` in from CrossOver.
+1. `local/runtime-modules/lib/wine/x86_64-unix/ntdll.so` is the patched one;
+2. `lib/wine/x86_64-windows/ntdll.dll` **must exist alongside it**.
 
-### 4.2 Exception — when the install is a CrossOver bottle
+The second point is an easy trap: `ntdll` is a Unix/PE pair, and replacing only the `.so` while
+the `.dll` is missing fails at startup with `error c0000135`. Generating the view with
+`prepare_runtime.py` cannot miss it.
 
-Section 2 of this guide creates a **plain Wine prefix**, so use the option above.
+> **Update both layers.** The view shadows the prefix, so updating only one of them leaves the
+> view fixed and the prefix stale.
 
-If your NIKKE was installed as a **CrossOver bottle** (through CrossOver's GUI, or by
-`cxbottle --create`) and you want a **separate copy** -- the original left completely
-untouched, plus a clone with its own CrossOver menu entry -- use
-`scripts/install_crossover_entry.py`; see `--help` for its arguments.
+> If you already have a prefix with NIKKE installed (for example a CrossOver bottle created through
+> the GUI), this section is all you need. To build a separate copy with a CrossOver menu entry
+> while leaving the original untouched, use `scripts/install_crossover_entry.py --help`.
 
 ---
 
-## 5. Verifying the installation
+## 5. Install the game
 
-### 5.1 Check module hashes
+### 5.1 Download the PC client
+
+Download the **NIKKE PC International** installer (`NIKKE.PC_Offcial_GL_<version>.exe`). Verified
+here with `152.8.13`.
+
+### 5.2 Run the installer
 
 ```sh
-RUNTIME="$PWD/local/runtime-modules"
-for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
-  md5 -q "$RUNTIME/lib/wine/x86_64-windows/$f"
-done
-md5 -q "$RUNTIME/lib/wine/x86_64-unix/ntdll.so"
+scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" \
+    ~/Downloads/NIKKE.PC_Offcial_GL_<version>.exe
 ```
 
-Reference values :
+The prefix already exists, so the script skips creating it and only runs the installer. Follow the
+prompts and keep the default install path `C:\NIKKE\Launcher`.
 
-```
-ntoskrnl.exe     553a755df4792272d091168c7a4ac189
-mfplat.dll       9e05b449b0042c1828db913def2a1bcc
-mfreadwrite.dll  1d3509c2e55d5581fc2e26426b1fe440
-lsass.exe        b09816da5eb8d431c748f7709ef7b390
-ntdll.so         ae6489f07e27c0ddbf541d2db82446c9   (must be x86_64)
-```
+### 5.3 Create the launcher app
 
-> `ntdll.so` **must** be `x86_64`. The host-default build produces `arm64`,
-> which fails in the bootstrap with an obscure architecture error. Check it
-> with `lipo -archs`.
-
-### 5.2 Confirm the ACE exports are present
-
-The built `ntoskrnl.exe` must export these (called by ACE):
-
-```
-KeTryToAcquireGuardedMutex
-KeIpiGenericCall
-KeGetProcessorNumberFromIndex
-KeRevertToUserGroupAffinityThread
-KeSetSystemGroupAffinityThread
-ObDereferenceObjectDeferDelete
-PsGetCurrentThreadTeb
+```sh
+scripts/create_launch_app.sh
 ```
 
-A missing `KeAcquireGuardedMutex` makes ACE report
-`unimplemented function ntoskrnl.exe.KeAcquireGuardedMutex` and refuse to start.
+This produces `~/Applications/NIKKE Wine.app`, self-contained with the Wine loader inside it.
 
-### 5.3 Run the interface tests
+---
+
+## 6. Verify
 
 ```sh
 python3 scripts/test_wine_modules.py \
-    --prefix "$PREFIX" \
+    --prefix "$HOME/Library/Application Support/NIKKE-Wine" \
     --runtime local/runtime-modules
 ```
 
+Also confirm `ntdll.so` is **x86_64**:
+
+```sh
+lipo -archs local/runtime-modules/lib/wine/x86_64-unix/ntdll.so
+```
+
+> It must say `x86_64`. An `arm64` build fails during bootstrap with an obscure architecture error.
+
 ---
 
-## 6. Launching
+## 7. Launching
 
-**Double-click `~/Applications/NIKKE Wine.app`, then press 启动.**
+**Double-click `~/Applications/NIKKE Wine.app` and press the launch button.**
 
-The app is self-contained (the Wine loader lives inside it) and calls
-`scripts/launch_nikke.sh`, whose defaults are the verified configuration (both MF switches,
-DXVK, and the d3d native overrides). Equivalent from a shell:
+The equivalent command line:
 
 ```sh
 cd /path/to/nikke-crossover-compat && scripts/launch_nikke.sh
 ```
 
-> This installation does not rely on CrossOver's bottle menu -- launch with the app above.
+The script's defaults are the verified configuration (both Media Foundation switches,
+`CX_GRAPHICS_BACKEND=dxvk`, the d3d native overrides), so using the app cannot leave one out.
 
-The launch profile uses **DXVK**. Changing the graphics backend in CrossOver
-does not rewrite this dedicated profile.
+### First launch: let it download resources
 
-For a sharper image, enable **High Resolution Mode** on the right-hand panel
-of the bottle and restart it.
+Log in, then **let it finish downloading** before pressing launch.
 
-> ⚠️ Never run `wineserver -k` — it kills every running Wine session.
+> The first download is large (over 10 GB) and the game's own downloader is slow; on a poor
+> connection it takes hours.
+
+> If the picture looks soft, turn on **high resolution mode** in the CrossOver bottle settings and
+> restart the bottle.
+
+> ⚠️ Never run `wineserver -k` -- it kills every Wine session you have open.
 
 ---
 
-## 7. Updating
+## 8. Updating
 
-### 7.1 Update the game
+### 8.1 Update in game
 
-Let the official launcher download the update itself.
+When a new build ships, let the official launcher finish its update first.
 
-### 7.2 Update the compatibility patches (if the new version needs it)
+### 8.2 Update the patches (if the new build needs it)
 
 ```sh
 cd /path/to/nikke-crossover-compat
 git pull
 
-# build into new directories, leaving the ones in use alone
+# build into a new directory so the one in use is untouched
 make && make test
 python3 scripts/build_wine_modules.py \
     --archive "$PWD/crossover-sources-26.3.0.tar.gz" --output local/wine-modules-new
 python3 scripts/prepare_runtime.py \
     --output local/runtime-modules-new --modules local/wine-modules-new/build
 
-# back up and replace all four modules (as in section 4 --
-# skipping mfplat.dll or mfreadwrite.dll makes story scenes hang again)
+# back up and replace all four modules (same as section 4; leaving out
+# mfplat / mfreadwrite makes cutscenes hang again)
 PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
 mkdir -p /tmp/nikke-compat-backup
 for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
@@ -325,7 +287,7 @@ for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
      "$PREFIX/drive_c/windows/system32/"
 done
 
-# switch to the new view: replace the one the launcher uses by default
+# switch the view to the new one
 mv local/runtime-modules local/runtime-modules-old
 mv local/runtime-modules-new local/runtime-modules
 ```
@@ -333,90 +295,62 @@ mv local/runtime-modules-new local/runtime-modules
 **Keep the old files until the new build is confirmed working.** To roll back:
 
 ```sh
-cp /tmp/nikke-compat-backup/* \"$PREFIX/drive_c/windows/system32/\"
+cp /tmp/nikke-compat-backup/* "$PREFIX/drive_c/windows/system32/"
 mv local/runtime-modules local/runtime-modules-bad
 mv local/runtime-modules-old local/runtime-modules
 ```
 
-## 8. Troubleshooting
+---
 
+## 9. Troubleshooting
 
-### Story scenes hang (process alive, one core at 100%, log frozen)
+### Launcher is black, stalls at "initialising", or downloads never move
 
-The two Media Foundation switches are **not paired**. `NOP_BRIDGE_MF_NO_DXGI=1` alone is a
-half-applied state: Unity cannot get a DXGI device manager and falls back to software, while
-the reader still expects D3D frames, so the video pipeline stalls. Adding
-`NOP_BRIDGE_MF_SOFTWARE=1` fixes it. `scripts/launch_nikke.sh` carries both by default, so
-the self-built launcher app never hits this.
+The patches are not in the prefix, or the prefix and the view disagree. Redo
+[section 4](#4-install-the-patches-into-the-prefix) and make sure **both** layers were updated.
+
+### Cutscenes hang (process alive, 100% CPU, log stops)
+
+The two Media Foundation switches are **not paired**. `NOP_BRIDGE_MF_NO_DXGI=1` on its own is a
+half configuration: Unity gets no DXGI device manager, falls back to software, while the reader
+side still expects D3D frames, and the video pipeline stalls. Add
+`NOP_BRIDGE_MF_SOFTWARE=1`. `scripts/launch_nikke.sh` already sets both.
 
 ### A conhost window appears on every launch and outlives the launcher
 
-`lsass.exe` is a console application, so Wine allocates a console for that service; the
-window belongs to the service rather than the launcher, which is why closing the launcher
-does not close it. Flip its PE subsystem to GUI (`prepare_runtime.py` does this
-automatically) and remember to update **both the prefix and the view**.
+`lsass.exe` is a CONSOLE application, so Wine gives that service a console window, and the window
+belongs to the service rather than the launcher. Flipping its PE subsystem to GUI fixes it
+(`prepare_runtime.py` does this). Update **both** the prefix and the view afterwards.
 
-### `unimplemented function ntoskrnl.exe.KeAcquireGuardedMutex`
+### Startup fails with `unimplemented function ntoskrnl.exe.KeAcquireGuardedMutex`
 
-You are running CrossOver's stock `ntoskrnl.exe`, not the one built here.
-Redo [section 4](#4-installing-into-the-wine-prefix).
+The stock CrossOver `ntoskrnl.exe` is installed instead of the one built here. Redo
+[section 4](#4-install-the-patches-into-the-prefix).
 
-> Note: our `ntoskrnl.exe` is a **superset** of CrossOver's. Restoring the
-> original **breaks ACE**.
-
-### Launcher black screen
-
-Handled by `crossover-mf-software.patch` (video takes the software
-fallback path). Confirm the patch was applied.
+> The `ntoskrnl.exe` built here is a **superset** of CrossOver's; putting the original back
+> **breaks ACE**. The built one should export `KeTryToAcquireGuardedMutex`, `KeIpiGenericCall`,
+> `KeGetProcessorNumberFromIndex`, `PsGetCurrentThreadTeb` and the rest of what ACE calls.
 
 ### ACE errors
 
-Two background ACE CORE driver processes still exit abnormally (known
-limitation). Playable does not mean every protection component is healthy.
+Two background ACE CORE driver processes still exit abnormally (a known limit). Being playable does
+not mean every protection component is healthy.
 
-### Game won't start after a game update
+### The game will not start after an update
 
-Major updates usually introduce new kernel calls. Use the `KeBugCheck` log:
+Large game updates tend to call new kernel interfaces. Find out what is missing from the
+`KeBugCheck` log:
 
 ```
 ERR( "KeBugCheck %lx called from %p\n", code, __builtin_return_address(0) );
 ```
 
-Then add the missing implementation to
-`patches/crossover-ace-kernel-exports.patch`.
-
-### Blurry image
-
-Enable **High Resolution Mode** for the bottle in CrossOver and restart it.
+Then add the implementation to `patches/crossover-ace-kernel-exports.patch`.
 
 ---
 
-## Appendix — full command sequence
+## Licence
 
-```sh
-cd /path/to/nikke-crossover-compat
-make && make test
-
-curl -LO https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.3.0.tar.gz
-
-python3 scripts/build_wine_modules.py \
-    --archive "$PWD/crossover-sources-26.3.0.tar.gz" \
-    --output local/wine-modules
-
-python3 scripts/prepare_runtime.py \
-    --output local/runtime-modules \
-    --modules local/wine-modules/build
-
-PREFIX="$HOME/Library/Application Support/NIKKE-Wine"
-RUNTIME="$PWD/local/runtime-modules"
-cp "$RUNTIME/lib/wine/x86_64-windows/"{ntoskrnl.exe,lsass.exe} \
-   "$PREFIX/drive_c/windows/system32/"
-```
-
----
-
-## License
-
-**LGPL-2.1-or-later** — see [LICENSE](../LICENSE) and
-[third-party notices](../THIRD_PARTY.md).
-No game files, ACE binaries, CrossOver binaries, or account data are included.
+This repository is **LGPL-2.1-or-later**; see [LICENSE](../LICENSE) and
+[third-party sources](../THIRD_PARTY.md). It contains no game files, no ACE files, no CrossOver
+binaries and no account data.

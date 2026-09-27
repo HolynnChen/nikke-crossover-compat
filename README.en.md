@@ -67,7 +67,7 @@ Logging in and the >10 GB asset download happen inside the launcher and cannot b
 # 1. the macOS-side compatibility layer
 make && make test
 
-# 2. build the Wine patch modules from the CrossOver 26.3 source archive (download it first)
+# 2. build the Wine patch modules from the CrossOver 26.3 source archive
 python3 scripts/build_wine_modules.py \
     --archive /path/to/crossover-sources-26.3.0.tar.gz --output local/wine-modules
 
@@ -75,17 +75,21 @@ python3 scripts/build_wine_modules.py \
 python3 scripts/prepare_runtime.py \
     --output local/runtime-modules --modules local/wine-modules/build
 
-# 4. create the prefix and install the game (no CrossOver GUI, no CrossOver bottle)
-#    the second argument is the installer; omit it to only create the prefix
-scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" <installer.exe>
+# 4. create the prefix (this needs the view from step 3; without it the script
+#    exits with "runtime view is missing")
+scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine"
 
-# 5. install the runtime modules into the prefix and create the launcher app
+# 5. patches first, then the game -- this order cannot be swapped
+#    without the patches the launcher is black, stalls at "initialising"
+#    and cannot download resources
 for f in ntoskrnl.exe mfplat.dll mfreadwrite.dll lsass.exe; do
   cp "local/runtime-modules/lib/wine/x86_64-windows/$f" \
      "$HOME/Library/Application Support/NIKKE-Wine/drive_c/windows/system32/"
 done
-scripts/create_launch_app.sh
+scripts/create_prefix.sh "$HOME/Library/Application Support/NIKKE-Wine" <installer.exe>
 
+# 6. create the launcher app
+scripts/create_launch_app.sh
 ```
 
 Full details are in the **[install guide](docs/INSTALL.en.md)**. Skip step 4 if NIKKE is already
@@ -118,7 +122,7 @@ normal install needs no manual configuration.
 
 ## If something goes wrong
 
-See [troubleshooting in the install guide](docs/INSTALL.en.md#8-troubleshooting). The usual ones:
+See [troubleshooting in the install guide](docs/INSTALL.en.md#9-troubleshooting). The usual ones:
 
 - **Story scenes hang** (process alive, one core at 100%, log frozen): the two MF switches are
   unpaired.
