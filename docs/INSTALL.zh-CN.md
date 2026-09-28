@@ -310,6 +310,28 @@ mv local/runtime-modules-old local/runtime-modules
 补丁没装进前缀，或者前缀与视图不一致。回到[第四节](#四把补丁装进前缀)重做，
 并确认前缀与视图**两层**都已更新。
 
+### 登录验证码白屏（LEVEL INFINITE CAPTCHA 只有白底、看不到滑块）
+
+验证码**不是**由 `tbs_browser.exe` 渲染的，而是由 `intl_service.exe` 另起的 WebView 宿主
+`INTLWebViewHelper.exe` 渲染。渲染开关必须送到**这个宿主**才生效 —— 本项目
+`crossover-chromium-flags.patch` 的白名单里已经包含它，所以正常情况下无需额外处理。
+
+白屏时按顺序排除：
+
+1. **DNS**：验证码页面来自 levelinfinite 的域（如 `pass.levelinfinite.com`），在国内被污染成
+   `0.0.0.1`。确认 hosts 里有这条，或跑一次 `sudo scripts/fix-nikke-hosts.sh`。
+   网络或页面加载失败与「缺组件」表现完全一样，不能据此断定缺组件。
+2. **宿主没拿到开关**：确认前缀与视图**两层**都装了打过补丁的模块（见[第四节](#四把补丁装进前缀)）。
+3. 仍白屏时，可在 `crossover-chromium-flags.patch` 追加的开关里再补一个 `--disable-gpu`，
+   然后重建模块。上游 0.2.1 用的是 `--disable-gpu --disable-gpu-compositing --in-process-gpu`
+   三件套；本项目当前只用后两个 —— 那是实测通过了启动器窗口的组合，
+   **第三个对验证码宿主是否必要，未在本机验证**。
+
+> 上游同问题的修复说明见
+> [UPDATE-2026-09-26.zh-CN.md](https://github.com/kanata-dp/nikke-crossover-compat/blob/main/docs/UPDATE-2026-09-26.zh-CN.md)。
+> 他们的做法是替换游戏目录里的 `intl_service.exe`，本项目不采用（那会在启动器更新后被覆盖，
+> 也正是本项目用 Wine 侧补丁而不用包装程序的原因）。
+
 ### 进剧情就卡死（进程还在、CPU 100%、日志不动）
 
 两个 Media Foundation 开关**没有配对**。只设 `NOP_BRIDGE_MF_NO_DXGI=1` 是半配置状态：

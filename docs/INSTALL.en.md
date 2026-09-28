@@ -318,6 +318,33 @@ mv local/runtime-modules-old local/runtime-modules
 The patches are not in the prefix, or the prefix and the view disagree. Redo
 [section 4](#4-install-the-patches-into-the-prefix) and make sure **both** layers were updated.
 
+### Login CAPTCHA is blank (LEVEL INFINITE CAPTCHA shows a white page, no slider)
+
+The CAPTCHA is **not** rendered by `tbs_browser.exe`: `intl_service.exe` starts a separate
+WebView host, `INTLWebViewHelper.exe`, and the rendering switches have to reach **that** host.
+This project's `crossover-chromium-flags.patch` already whitelists it, so nothing extra should
+be needed.
+
+If it is blank anyway, rule things out in this order:
+
+1. **DNS**: the CAPTCHA page comes from a levelinfinite domain (such as
+   `pass.levelinfinite.com`), which Chinese resolvers poison to `0.0.0.1`. Make sure it is in
+   your hosts file, or run `sudo scripts/fix-nikke-hosts.sh`. A failed page load looks exactly
+   like a missing component, so it proves nothing about either.
+2. **The host never saw the switches**: check that **both** the prefix and the view carry the
+   patched modules (see [section 4](#4-install-the-patches-into-the-prefix)).
+3. If it stays blank, add `--disable-gpu` to the switches the patch appends and rebuild the
+   modules. Upstream 0.2.1 uses all three of `--disable-gpu --disable-gpu-compositing
+   --in-process-gpu`; this project uses the last two, which is what was verified against the
+   launcher window. Whether the third is needed for the CAPTCHA host has **not** been verified
+   here.
+
+> Upstream's write-up of the same symptom is
+> [UPDATE-2026-09-26.en.md](https://github.com/kanata-dp/nikke-crossover-compat/blob/main/docs/UPDATE-2026-09-26.en.md).
+> Their fix replaces `intl_service.exe` inside the game directory, which this project does not
+> do -- a launcher update overwrites it, which is exactly why the Wine-side patch is used here
+> instead of a wrapper.
+
 ### Cutscenes hang (process alive, 100% CPU, log stops)
 
 The two Media Foundation switches are **not paired**. `NOP_BRIDGE_MF_NO_DXGI=1` on its own is a
